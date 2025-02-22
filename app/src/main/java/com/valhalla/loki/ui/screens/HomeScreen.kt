@@ -46,6 +46,8 @@ import com.valhalla.loki.model.exportLogs
 import com.valhalla.loki.model.getAppIcon
 import com.valhalla.loki.ui.widgets.TermLoggerDialog
 import com.valhalla.loki.model.AppInfo
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.URLConnection
 
@@ -169,66 +171,60 @@ fun HomeScreen(
             }
         }
 
-        if (selectedApp != null) {
-
-            Dialog(
-                onDismissRequest = {
-                    selectedApp = null
-                },
-                properties = DialogProperties(
-                    dismissOnBackPress = false,
-                    dismissOnClickOutside = false,
-                    usePlatformDefaultWidth = false
-                )
-            ) {
-
+        LaunchedEffect(selectedApp){
+            if(selectedApp!=null) {
                 var tryExit = {
                     logObserver += "Logs exported"
                     canExit = true
                 }
                 logObserver = emptyList()
                 termLoggerTitle = "Loki's Logger"
-                val folder = File(context.filesDir, "logs")
-                val logFile = File(folder, "${selectedApp?.appName}.log")
-                if (folder.exists() || folder.mkdirs()) {
-                    if (logFile.exists().not() || logFile.delete()) {
-                        if (logFile.createNewFile()) {
-                            exportLogs(selectedApp!!, logFile, observer = {
-                                logObserver += it
-                            }, exit = { result ->
-                                if(result.isSuccess){
-                                    ShareCompat.IntentBuilder(context)
-                                        .setStream(FileProvider.getUriForFile(
-                                            context,
-                                            BuildConfig.APPLICATION_ID + ".provider",
-                                            logFile
-                                        ))
-                                        .setType(URLConnection.guessContentTypeFromName(logFile.getName()))
-                                        .startChooser()
-                                    tryExit.invoke()
-                                }else{
-                                    result.exceptionOrNull()?.printStackTrace()
-                                    logObserver += "Failed to export logs"
-                                    canExit = true
-                                }
-                            })
+                withContext(Dispatchers.IO) {
+                    val folder = File(context.filesDir, "logs")
+                    val logFile = File(folder, "${selectedApp?.appName}.log")
+                    if (folder.exists() || folder.mkdirs()) {
+                        if (logFile.exists().not() || logFile.delete()) {
+                            if (logFile.createNewFile()) {
+                                exportLogs(selectedApp!!, logFile, observer = {
+                                    logObserver += it
+                                }, exit = { result ->
+                                    if (result.isSuccess) {
+                                        ShareCompat.IntentBuilder(context)
+                                            .setStream(
+                                                FileProvider.getUriForFile(
+                                                    context,
+                                                    BuildConfig.APPLICATION_ID + ".provider",
+                                                    logFile
+                                                )
+                                            )
+                                            .setType(URLConnection.guessContentTypeFromName("demo.txt"))
+                                            .startChooser()
+                                        tryExit.invoke()
+                                    } else {
+                                        result.exceptionOrNull()?.printStackTrace()
+                                        logObserver += "Failed to export logs"
+                                        canExit = true
+                                    }
+                                })
+                            }
                         }
                     }
                 }
-
-                TermLoggerDialog(
-                    title = termLoggerTitle,
-                    canExit = canExit,
-                    logObserver = logObserver,
-                    done = {
-                        selectedApp = null
-                        canExit = false
-                    }
-                )
             }
-
         }
 
+        if(logObserver.isNotEmpty()){
+            TermLoggerDialog(
+                title = termLoggerTitle,
+                canExit = canExit,
+                logObserver = logObserver,
+                done = {
+                    logObserver = emptyList()
+                    selectedApp = null
+                    canExit = false
+                }
+            )
+        }
 
     }
 
