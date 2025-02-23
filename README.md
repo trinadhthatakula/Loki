@@ -7,8 +7,6 @@
 <h1 align="center">Loki - Logger (Unstable)</h1>
 
 
----
-
 * 100% Kotlin 
 * Material 3 Design 
 * Jetpack Compose
