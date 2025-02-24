@@ -10,6 +10,8 @@ import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ShellUtils.fastCmd
 import com.valhalla.loki.BuildConfig
 import java.io.File
+import kotlin.Throwable
+import kotlin.jvm.Throws
 
 //pid=$(adb shell ps | grep <package name> | cut -c11-15) ; adb logcat | grep $pid
 private const val TAG = "SuCli"
@@ -80,15 +82,27 @@ fun exportLogs(
     observer: (String) -> Unit,
     exit: (Result<Boolean>) -> Unit
 ) {
-    observer("Exporting logs for ${appInfo.appName}")
+    observer("Logs for ${appInfo.appName}")
     try {
         observer("searching PID for ${appInfo.appName}")
         val pid = fastCmd(getRootShell(), (if(rootAvailable())"su -c " else "")+"pidof ${appInfo.packageName}")
+        val commands = if(pid.isNotEmpty()) {
+            observer("searching for logs for ${appInfo.appName} with pid: $pid")
+            " logcat | grep $pid > ${file.absolutePath}"
+        } else {
+            "logcat | grep ${appInfo.packageName} > ${file.absolutePath}"
+        }
         observer("Exporting logs.., Please wait")
-        val commands = if(pid.isNotEmpty())" logcat | grep $pid > ${file.absolutePath}" else "logcat | grep ${appInfo.packageName} > ${file.absolutePath}"
-        fastCmd(getRootShell(), if(rootAvailable())"su -c $commands" else " commands")
-        observer("logs exported")
-        exit(Result.success(true))
+        getRootShell().newJob()
+            .add(if(rootAvailable())"su -c $commands" else " commands")
+            .submit { cb ->
+                if(cb.isSuccess){
+                    observer("logs exported")
+                    exit(Result.success(true))
+                }else {
+                    exit(Result.failure(Throwable(cb.err.joinToString("\n"))))
+                }
+            }
     } catch (e: Exception) {
         exit(Result.failure(e))
     }

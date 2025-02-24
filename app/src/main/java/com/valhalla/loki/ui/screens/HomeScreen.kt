@@ -181,7 +181,7 @@ fun HomeScreen(
                 termLoggerTitle = "Loki's Logger"
                 withContext(Dispatchers.IO) {
                     val folder = File(context.filesDir, "logs")
-                    val logFile = File(folder, "${selectedApp?.appName}.log")
+                    val logFile = File(folder, "${selectedApp?.appName}.txt")
                     if (folder.exists() || folder.mkdirs()) {
                         if (logFile.exists().not() || logFile.delete()) {
                             if (logFile.createNewFile()) {
