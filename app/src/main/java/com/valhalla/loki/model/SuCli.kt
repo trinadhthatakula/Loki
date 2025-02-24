@@ -83,10 +83,10 @@ fun exportLogs(
     observer("Exporting logs for ${appInfo.appName}")
     try {
         observer("searching PID for ${appInfo.appName}")
-        val pid = fastCmd(getRootShell(), "ps | grep ${appInfo.packageName} | cut -c11-15")
+        val pid = fastCmd(getRootShell(), (if(rootAvailable())"su -c " else "")+"pidof ${appInfo.packageName}")
         observer("Exporting logs.., Please wait")
         val commands = if(pid.isNotEmpty())" logcat | grep $pid > ${file.absolutePath}" else "logcat | grep ${appInfo.packageName} > ${file.absolutePath}"
-        fastCmd(getRootShell(), commands)
+        fastCmd(getRootShell(), if(rootAvailable())"su -c $commands" else " commands")
         observer("logs exported")
         exit(Result.success(true))
     } catch (e: Exception) {

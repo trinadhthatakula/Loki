@@ -3,7 +3,6 @@ package com.valhalla.loki.model
 import android.content.Context
 import android.graphics.drawable.Drawable
 
-
 fun getAppIcon(packageName: String?, context: Context): Drawable? {
     return packageName?.let {
         try {
