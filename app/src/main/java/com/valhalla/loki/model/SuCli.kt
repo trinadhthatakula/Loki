@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.database.Cursor
 import android.net.Uri
+import android.os.Build
 import android.provider.OpenableColumns
 import android.util.Log.e
 import com.topjohnwu.superuser.Shell
@@ -105,5 +106,52 @@ fun exportLogs(
             }
     } catch (e: Exception) {
         exit(Result.failure(e))
+    }
+}
+
+
+var stopLogger: (()->Unit)? = null
+
+fun AppInfo.showLogs(observer: (String) -> Unit, exit: () -> Unit){
+
+    observer("Log Cat search $packageName")
+    observer("try getting pId")
+    val pId = fastCmd(getRootShell(), "logcat -c",(if(rootAvailable())"su -c" else "")+"pidof $packageName").trim()
+    val logCommand = if(pId.isNotEmpty()){
+        observer("pId found")
+        observer("")
+        observer("")
+        "logcat | grep $pId"
+    }else {
+        observer("pId not found")
+        observer("")
+        observer("fallback to use packageName instead")
+        "logcat | grep $packageName"
+    }
+    //Runtime.getRuntime().exec("logcat -c")/// clear logcat
+    Runtime.getRuntime().exec(logCommand).let { process ->
+        stopLogger = {
+            if(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    process.isAlive
+                } else {
+                    true
+                }
+            ){
+                observer("stopping logcat")
+                exit()
+                process.destroy()
+            }
+        }
+        process.inputStream.use {
+            try {
+                it.bufferedReader().useLines { lines ->
+                    lines.forEach { line ->
+                        observer(line)
+                    }
+                }
+            }catch (e: Exception){
+                e.printStackTrace()
+            }
+        }
     }
 }

@@ -46,6 +46,8 @@ import com.valhalla.loki.model.exportLogs
 import com.valhalla.loki.model.getAppIcon
 import com.valhalla.loki.ui.widgets.TermLoggerDialog
 import com.valhalla.loki.model.AppInfo
+import com.valhalla.loki.model.showLogs
+import com.valhalla.loki.model.stopLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -67,6 +69,7 @@ fun HomeScreen(
     var canExit by remember { mutableStateOf(false) }
     var logObserver by remember { mutableStateOf(emptyList<String>()) }
     var termLoggerTitle by remember { mutableStateOf("") }
+    var showTerminate by remember { mutableStateOf(false) }
 
     LaunchedEffect(isRefreshing) {
         if (isRefreshing) {
@@ -101,7 +104,7 @@ fun HomeScreen(
         }
 
         LazyColumn {
-            items(userApps + systemApps) {
+            items((userApps + systemApps).sortedBy { it.appName }) {
                 ListItem(
                     leadingContent = {
                         Box {
@@ -173,42 +176,19 @@ fun HomeScreen(
 
         LaunchedEffect(selectedApp){
             if(selectedApp!=null) {
-                var tryExit = {
-                    logObserver += "Logs exported"
-                    canExit = true
-                }
+                canExit = false
+                showTerminate = true
                 logObserver = emptyList()
                 termLoggerTitle = "Loki's Logger"
                 withContext(Dispatchers.IO) {
-                    val folder = File(context.filesDir, "logs")
-                    val logFile = File(folder, "${selectedApp?.appName}.txt")
-                    if (folder.exists() || folder.mkdirs()) {
-                        if (logFile.exists().not() || logFile.delete()) {
-                            if (logFile.createNewFile()) {
-                                exportLogs(selectedApp!!, logFile, observer = {
-                                    logObserver += it
-                                }, exit = { result ->
-                                    if (result.isSuccess) {
-                                        ShareCompat.IntentBuilder(context)
-                                            .setStream(
-                                                FileProvider.getUriForFile(
-                                                    context,
-                                                    BuildConfig.APPLICATION_ID + ".provider",
-                                                    logFile
-                                                )
-                                            )
-                                            .setType(URLConnection.guessContentTypeFromName("demo.txt"))
-                                            .startChooser()
-                                        tryExit.invoke()
-                                    } else {
-                                        result.exceptionOrNull()?.printStackTrace()
-                                        logObserver += "Failed to export logs"
-                                        canExit = true
-                                    }
-                                })
-                            }
+                    selectedApp!!.showLogs(
+                        observer = {
+                            logObserver += it
+                        },
+                        exit = {
+                            canExit = true
                         }
-                    }
+                    )
                 }
             }
         }
@@ -222,6 +202,14 @@ fun HomeScreen(
                     logObserver = emptyList()
                     selectedApp = null
                     canExit = false
+                },
+                showTerminate = showTerminate,
+                onTerminate = {
+                    logObserver = emptyList()
+                    stopLogger?.invoke()
+                    logObserver = emptyList()
+                    selectedApp = null
+                    canExit = true
                 }
             )
         }
