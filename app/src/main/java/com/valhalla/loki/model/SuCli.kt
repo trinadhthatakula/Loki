@@ -4,15 +4,19 @@ import android.content.ContentResolver
 import android.content.Context
 import android.database.Cursor
 import android.net.Uri
-import android.os.Build
 import android.provider.OpenableColumns
 import android.util.Log.e
 import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ShellUtils.fastCmd
 import com.valhalla.loki.BuildConfig
+import com.valhalla.loki.model.logcatFuture
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
-import kotlin.Throwable
-import kotlin.jvm.Throws
+import java.util.concurrent.CancellationException
+import java.util.concurrent.Future
 
 //pid=$(adb shell ps | grep <package name> | cut -c11-15) ; adb logcat | grep $pid
 private const val TAG = "SuCli"
@@ -86,8 +90,11 @@ fun exportLogs(
     observer("Logs for ${appInfo.appName}")
     try {
         observer("searching PID for ${appInfo.appName}")
-        val pid = fastCmd(getRootShell(), (if(rootAvailable())"su -c " else "")+"pidof ${appInfo.packageName}")
-        val commands = if(pid.isNotEmpty()) {
+        val pid = fastCmd(
+            getRootShell(),
+            (if (rootAvailable()) "su -c " else "") + "pidof ${appInfo.packageName}"
+        )
+        val commands = if (pid.isNotEmpty()) {
             observer("searching for logs for ${appInfo.appName} with pid: $pid")
             " logcat | grep $pid > ${file.absolutePath}"
         } else {
@@ -95,12 +102,12 @@ fun exportLogs(
         }
         observer("Exporting logs.., Please wait")
         getRootShell().newJob()
-            .add(if(rootAvailable())"su -c $commands" else " commands")
+            .add(if (rootAvailable()) "su -c $commands" else " commands")
             .submit { cb ->
-                if(cb.isSuccess){
+                if (cb.isSuccess) {
                     observer("logs exported")
                     exit(Result.success(true))
-                }else {
+                } else {
                     exit(Result.failure(Throwable(cb.err.joinToString("\n"))))
                 }
             }
@@ -110,47 +117,59 @@ fun exportLogs(
 }
 
 
-var stopLogger: (()->Unit)? = null
+var stopLogger: (() -> Unit)? = null
+// You should pass in a CoroutineScope to launch the observer on the main thread
 
-fun AppInfo.showLogs(observer: (String) -> Unit, exit: () -> Unit){
+private var logcatFuture: Future<Shell.Result>? = null
 
-    observer("Log Cat search $packageName")
-    observer("try getting pId")
-    val pId = fastCmd(getRootShell(), "logcat -c",(if(rootAvailable())"su -c" else "")+"pidof $packageName").trim()
-    val logCommand = if(pId.isNotEmpty()){
-        observer("pId found")
-        observer("")
-        observer("")
-        "logcat | grep $pId"
-    }else {
-        observer("pId not found")
-        observer("")
-        observer("fallback to use packageName instead")
+// MODIFIED FUNCTION
+fun AppInfo.showLogs(
+    scope: CoroutineScope,
+    outputFile: File,
+    onExit: () -> Unit
+) {
+    val shell = getRootShell()
+    shell.newJob().add("logcat -c").exec()
+
+    val pId = fastCmd(shell, "pidof $packageName").trim()
+    val logCommand = if (pId.isNotEmpty()) {
+        "logcat --pid=$pId"
+    } else {
         "logcat | grep $packageName"
     }
-    //Runtime.getRuntime().exec("logcat -c")/// clear logcat
-    Runtime.getRuntime().exec(logCommand).let { process ->
-        stopLogger = {
-            if(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    process.isAlive
-                } else {
-                    true
-                }
-            ){
-                observer("stopping logcat")
-                exit()
-                process.destroy()
-            }
+
+    stopLogger = {
+        if (logcatFuture?.isDone == false) {
+            logcatFuture?.cancel(true)
         }
-        process.inputStream.use {
-            try {
-                it.bufferedReader().useLines { lines ->
-                    lines.forEach { line ->
-                        observer(line)
-                    }
-                }
-            }catch (e: Exception){
-                e.printStackTrace()
+    }
+
+    scope.launch(Dispatchers.IO) {
+        try {
+            outputFile.bufferedWriter().use { writer ->
+                logcatFuture = shell.newJob()
+                    .add(logCommand)
+                    .to(object : ArrayList<String>() {
+                        override fun add(element: String): Boolean {
+                            // Write each log line to the file
+                            writer.write(element)
+                            writer.newLine()
+                            return true
+                        }
+                    })
+                    .enqueue()
+
+                logcatFuture?.get() // Block until done or cancelled
+            }
+        } catch (e: CancellationException) {
+            // Expected on cancellation
+        } catch (e: Exception) {
+            // Handle other errors
+            e.printStackTrace()
+        } finally {
+            // Use the main dispatcher to call the exit callback if needed
+            withContext(Dispatchers.Main) {
+                onExit()
             }
         }
     }
