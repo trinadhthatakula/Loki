@@ -58,6 +58,7 @@ import kotlinx.coroutines.withContext
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen() {
+
     val context = LocalContext.current
     val grabber = remember { AppInfoGrabber(context) }
     var userApps by remember { mutableStateOf(emptyList<AppInfo>()) }
@@ -130,7 +131,8 @@ fun HomeScreen() {
                     }
                 }
             )
-        }
+        },
+
     ) { paddingValues ->
 
         LazyColumn(modifier = Modifier
