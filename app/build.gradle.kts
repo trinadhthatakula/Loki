@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,17 +7,26 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_21)
+        optIn.add("kotlin.RequiresOptIn")
+        optIn.add("kotlin.time.ExperimentalTime")
+        optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
+    }
+}
+
 android {
 
     namespace = "com.valhalla.loki"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.valhalla.loki"
         minSdk = 24
-        targetSdk = 35
-        versionCode = 1
-        versionName = "0.001"
+        targetSdk = 36
+        versionCode = 10000
+        versionName = "1.00.00"
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -31,9 +42,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
-    }
-    kotlinOptions {
-        jvmTarget = "21"
     }
     buildFeatures {
         buildConfig = true
