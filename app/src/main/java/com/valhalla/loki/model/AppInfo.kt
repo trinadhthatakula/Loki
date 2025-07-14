@@ -2,6 +2,7 @@ package com.valhalla.loki.model
 
 import android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 @Serializable
 data class AppInfo(
@@ -17,4 +18,18 @@ data class AppInfo(
     var splitPublicSourceDirs: List<String> = emptyList(),
     var enabled: Boolean = true,
     var enabledState: Int = COMPONENT_ENABLED_STATE_DEFAULT
-)
+) {
+    fun asString() = Json.encodeToString(this)
+
+    companion object {
+        fun fromString(string: String?) = try {
+            if (string != null)
+                Json.decodeFromString<AppInfo>(string)
+            else null
+        } catch (_: Exception) {
+            null
+        }
+
+    }
+
+}

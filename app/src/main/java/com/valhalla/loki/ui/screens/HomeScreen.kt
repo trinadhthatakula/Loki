@@ -1,117 +1,149 @@
 package com.valhalla.loki.ui.screens
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.core.app.ShareCompat
-import androidx.core.content.FileProvider
+import androidx.core.content.ContextCompat
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
-import com.valhalla.loki.BuildConfig
 import com.valhalla.loki.R
-import com.valhalla.loki.model.AppInfoGrabber
-import com.valhalla.loki.model.exportLogs
-import com.valhalla.loki.model.getAppIcon
-import com.valhalla.loki.ui.widgets.TermLoggerDialog
 import com.valhalla.loki.model.AppInfo
-import com.valhalla.loki.model.showLogs
-import com.valhalla.loki.model.stopLogger
+import com.valhalla.loki.model.AppInfoGrabber
+import com.valhalla.loki.model.getAppIcon
+import com.valhalla.loki.services.LogcatService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.net.URLConnection
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(
-    modifier: Modifier = Modifier,
-    onExit: () -> Unit = {}
-) {
-
+fun HomeScreen() {
     val context = LocalContext.current
+    val grabber = remember { AppInfoGrabber(context) }
+    var userApps by remember { mutableStateOf(emptyList<AppInfo>()) }
+    var systemApps by remember { mutableStateOf(emptyList<AppInfo>()) }
 
-    val grabber = AppInfoGrabber(context)
+    // Observe the service's running state
+    val isLoggerRunning by LogcatService.isRunning.collectAsState()
 
-    var userApps by remember { mutableStateOf(grabber.getUserApps()) }
-    var systemApps by remember { mutableStateOf(grabber.getSystemApps()) }
-    var isRefreshing by remember { mutableStateOf(false) }
-    var canExit by remember { mutableStateOf(false) }
-    var logObserver by remember { mutableStateOf(emptyList<String>()) }
-    var termLoggerTitle by remember { mutableStateOf("") }
-    var showTerminate by remember { mutableStateOf(false) }
+    var showBottomSheet by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState()
 
-    LaunchedEffect(isRefreshing) {
-        if (isRefreshing) {
-            userApps = grabber.getUserApps()
-            systemApps = grabber.getSystemApps()
-            isRefreshing = false
+    LaunchedEffect(Unit) {
+        userApps = grabber.getUserApps()
+        systemApps = grabber.getSystemApps()
+    }
+
+    // --- PERMISSION HANDLING ---
+    var selectedAppForPermission by remember { mutableStateOf<AppInfo?>(null) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { isGranted ->
+            if (isGranted) {
+                selectedAppForPermission?.let { startLogService(context, it) }
+            } else {
+                Toast.makeText(context, "Notification permission denied.", Toast.LENGTH_SHORT)
+                    .show()
+            }
+            selectedAppForPermission = null
+        }
+    )
+
+    fun handleAppClick(appInfo: AppInfo) {
+        if (isLoggerRunning) {
+            Toast.makeText(context, "A logging session is already running.", Toast.LENGTH_SHORT)
+                .show()
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            when {
+                ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED -> {
+                    startLogService(context, appInfo)
+                }
+
+                else -> {
+                    selectedAppForPermission = appInfo
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+        } else {
+            // No runtime permission needed for pre-Tiramisu
+            startLogService(context, appInfo)
         }
     }
 
-    if (userApps.isEmpty() && systemApps.isEmpty()) {
-        isRefreshing = true
-    }
-
-    var selectedApp: AppInfo? by remember { mutableStateOf(null) }
-
-    Column(modifier = modifier.fillMaxSize()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                painter = painterResource(R.drawable.launcher_foreground),
-                "App Icon",
-                modifier = Modifier
-                    .padding(5.dp)
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .padding(8.dp)
-            )
-            Text(
-                "Loki",
-                style = MaterialTheme.typography.titleLarge,
-                textAlign = TextAlign.Start
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Loki") },
+                actions = {
+                    if (isLoggerRunning) {
+                        IconButton(onClick = { showBottomSheet = true }) {
+                            Icon(
+                                painterResource(R.drawable.graphic_eq),
+                                contentDescription = "Logger is running"
+                            )
+                        }
+                    }
+                }
             )
         }
+    ) { paddingValues ->
 
-        LazyColumn {
-            items((userApps + systemApps).sortedBy { it.appName }) {
+        LazyColumn(modifier = Modifier
+            .fillMaxSize()
+            .padding(paddingValues)) {
+            items((userApps + systemApps).sortedBy { it.appName }) { app ->
                 ListItem(
                     leadingContent = {
                         Box {
                             Image(
                                 painter = rememberDrawablePainter(
                                     getAppIcon(
-                                        it.packageName,
+                                        app.packageName,
                                         context
                                     )
                                 ),
@@ -122,98 +154,118 @@ fun HomeScreen(
                             )
                         }
                     },
-                    headlineContent = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.horizontalScroll(rememberScrollState())
-                        ) {
-                            Text(
-                                it.appName ?: "Unknown",
-                                maxLines = 1
-                            )
-                            if (it.splitPublicSourceDirs.isNotEmpty()) {
-                                Text(
-                                    text = "${it.splitPublicSourceDirs.size} Splits",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier
-                                        .padding(horizontal = 2.dp)
-                                        .background(
-                                            color = MaterialTheme.colorScheme.primaryContainer,
-                                            RoundedCornerShape(50)
-                                        )
-                                        .padding(horizontal = 8.dp, vertical = 2.5.dp),
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            }
-                        }
-                    },
-                    supportingContent = {
-                        Text(
-                            it.packageName,
-                            maxLines = 1
-                        )
-                    },
-                    modifier = Modifier.Companion
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable {
-                            selectedApp = it
-                        }
-
+                    headlineContent = { Text(app.appName ?: "Unknown") },
+                    supportingContent = { Text(app.packageName) },
+                    modifier = Modifier.clickable { handleAppClick(app) }
+                    // Your existing leadingContent...
                 )
             }
         }
 
-        BackHandler {
-            if (selectedApp == null) {
-                onExit()
-            } else {
-                Toast.makeText(
-                    context, "Please wait exporting logs for ${selectedApp?.appName}",
-                    Toast.LENGTH_SHORT
-                ).show()
+        if (showBottomSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showBottomSheet = false },
+                sheetState = sheetState
+            ) {
+                LoggerBottomSheetContent(onStop = {
+                    val intent = Intent(context, LogcatService::class.java).apply {
+                        action = LogcatService.ACTION_STOP
+                    }
+                    context.startService(intent)
+                    showBottomSheet = false
+                })
             }
         }
 
-        LaunchedEffect(selectedApp){
-            if(selectedApp!=null) {
-                canExit = false
-                showTerminate = true
-                logObserver = emptyList()
-                termLoggerTitle = "Loki's Logger"
-                withContext(Dispatchers.IO) {
-                    selectedApp!!.showLogs(
-                        observer = {
-                            logObserver += it
-                        },
-                        exit = {
-                            canExit = true
-                        }
-                    )
-                }
-            }
-        }
-
-        if(logObserver.isNotEmpty()){
-            TermLoggerDialog(
-                title = termLoggerTitle,
-                canExit = canExit,
-                logObserver = logObserver,
-                done = {
-                    logObserver = emptyList()
-                    selectedApp = null
-                    canExit = false
-                },
-                showTerminate = showTerminate,
-                onTerminate = {
-                    logObserver = emptyList()
-                    stopLogger?.invoke()
-                    logObserver = emptyList()
-                    selectedApp = null
-                    canExit = true
-                }
-            )
-        }
 
     }
+}
 
+
+@Composable
+private fun LoggerBottomSheetContent(onStop: () -> Unit) {
+    val logFile by LogcatService.currentLogFile.collectAsState()
+    var logLines by remember { mutableStateOf(listOf<String>()) }
+    val listState = rememberLazyListState()
+
+    // This effect will "tail" the log file for new lines
+    LaunchedEffect(logFile) {
+        if (logFile == null) {
+            logLines = listOf("Waiting for log file...")
+            return@LaunchedEffect
+        }
+        logLines = emptyList()
+
+        launch(Dispatchers.IO) {
+            try {
+                // Wait a moment for the file to be created and written to
+                delay(250)
+                val reader = logFile!!.bufferedReader()
+                while (isActive) {
+                    val line = reader.readLine()
+                    if (line != null) {
+                        withContext(Dispatchers.Main) {
+                            logLines = logLines + line
+                        }
+                    } else {
+                        delay(300) // Wait for more content
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    logLines = logLines + "Error reading log file: ${e.message}"
+                }
+            }
+        }
+    }
+
+    // Auto-scroll to the bottom
+    LaunchedEffect(logLines.size) {
+        if (logLines.isNotEmpty()) {
+            listState.animateScrollToItem(logLines.size - 1)
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("Live Logcat", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 8.dp))
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .padding(vertical = 8.dp)
+        ) {
+            items(logLines) { line ->
+                Text(
+                    text = line,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+        Button(
+            onClick = onStop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp)
+        ) {
+            Icon(painterResource(R.drawable.force_close), contentDescription = "Stop", modifier = Modifier.padding(end = 8.dp))
+            Text("Stop Logging")
+        }
+    }
+}
+
+
+private fun startLogService(context: android.content.Context, appInfo: AppInfo) {
+    val intent = Intent(context, LogcatService::class.java).apply {
+        action = LogcatService.ACTION_START
+        putExtra(LogcatService.EXTRA_APP_INFO, appInfo.asString())
+    }
+    context.startService(intent)
+    Toast.makeText(context, "Starting logger for ${appInfo.appName}", Toast.LENGTH_SHORT).show()
 }
