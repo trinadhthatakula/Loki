@@ -19,11 +19,11 @@
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:icon="@mipmap/launcher"
+        android:icon="@mipmap/launch"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/launcher_round"
+        android:roundIcon="@mipmap/launch_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Loki"
+        android:theme="@style/Theme.Loki.SplashScreen"
         tools:targetApi="31">
         <activity
             android:name=".MainActivity"
