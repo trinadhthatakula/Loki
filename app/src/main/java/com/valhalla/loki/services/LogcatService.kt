@@ -141,7 +141,7 @@ class LogcatService : Service() {
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle("Loki Logger")
             .setContentText("Actively logging: $appName")
-            .setSmallIcon(R.drawable.launcher_foreground)
+            .setSmallIcon(R.drawable.launch_foreground)
             .setOngoing(true)
             .addAction(R.drawable.force_close, "Stop", pStopSelf)
             .build()
