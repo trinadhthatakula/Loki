@@ -2,4 +2,10 @@
 <resources>
 
     <style name="Theme.Loki" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.Loki.SplashScreen" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/loki_animated</item>
+        <item name="postSplashScreenTheme">@style/Theme.Loki</item>
+    </style>
+
 </resources>

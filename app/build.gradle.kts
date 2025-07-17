@@ -55,6 +55,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.splashscreen)
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
@@ -72,5 +73,11 @@ dependencies {
     implementation(libs.accompanist.drawablepainter)
 
     implementation(libs.topjohnwu.libsu.core)
+
+    implementation(libs.koin.android)
+    implementation(libs.koin.androidx.compose)
+
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
 
 }
