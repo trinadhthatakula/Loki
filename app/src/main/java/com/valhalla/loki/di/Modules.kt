@@ -5,6 +5,8 @@ import android.content.Context
 import com.valhalla.loki.model.AppInfoGrabber
 import com.valhalla.loki.ui.appList.AppListViewModel
 import com.valhalla.loki.ui.home.HomeViewModel
+import com.valhalla.loki.ui.onboarding.OnboardingScreen
+import com.valhalla.loki.ui.onboarding.OnboardingViewModel
 import com.valhalla.loki.ui.saved.SavedLogsViewModel
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
@@ -22,6 +24,7 @@ var appModules = module{
     viewModelOf(::AppListViewModel)
     viewModelOf(::HomeViewModel)
     viewModelOf(::SavedLogsViewModel)
+    viewModelOf(::OnboardingViewModel)
 }
 
 fun Application.initKoin() = startKoin {

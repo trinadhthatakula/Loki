@@ -77,4 +77,7 @@ dependencies {
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
 
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
+
 }

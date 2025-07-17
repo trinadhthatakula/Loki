@@ -11,7 +11,7 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.valhalla.loki.R
 import com.valhalla.loki.model.AppInfo
-import com.valhalla.loki.model.showLogs
+import com.valhalla.loki.model.fetchLogs
 import com.valhalla.loki.model.stopLogger
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,7 +73,8 @@ class LogcatService : Service() {
 
         startForeground(NOTIFICATION_ID, createNotification(appInfo.appName ?: "Unknown"))
 
-        appInfo.showLogs(
+        appInfo.fetchLogs(
+            context = this,
             scope = serviceScope,
             outputFile = logFile,
             onExit = {

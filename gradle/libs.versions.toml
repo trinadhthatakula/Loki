@@ -15,7 +15,6 @@ material3 = "1.4.0-alpha18"
 splashscreen = "1.0.1"
 koinAndroid = "4.1.0"
 shizuku = "13.1.5"
-hiddenapibypass = "6.1"
 
 [libraries]
 androidx-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
@@ -39,6 +38,10 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 #Koin
 koin-android = { module = "io.insert-koin:koin-android", version.ref = "koinAndroid" }
 koin-androidx-compose = { module = "io.insert-koin:koin-androidx-compose", version.ref = "koinAndroid" }
+#Shizuku
+shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
+shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku" }
+
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
