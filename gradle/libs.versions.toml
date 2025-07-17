@@ -5,13 +5,13 @@ coreKtx = "1.16.0"
 junit = "4.13.2"
 junitVersion = "1.2.1"
 espressoCore = "3.6.1"
-lifecycleRuntimeKtx = "2.9.1"
+lifecycleRuntimeKtx = "2.9.2"
 activityCompose = "1.10.1"
-composeBom = "2025.06.01"
+composeBom = "2025.07.00"
 libsu = "6.0.0"
 accompanistDrawablepainter = "0.37.3"
 kotlinx-serialization-json = "1.9.0"
-material3 = "1.4.0-alpha17"
+material3 = "1.4.0-alpha18"
 
 [libraries]
 accompanist-drawablepainter = { module = "com.google.accompanist:accompanist-drawablepainter", version.ref = "accompanistDrawablepainter" }
