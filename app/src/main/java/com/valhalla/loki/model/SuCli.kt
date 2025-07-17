@@ -9,7 +9,6 @@ import android.util.Log.e
 import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ShellUtils.fastCmd
 import com.valhalla.loki.BuildConfig
-import com.valhalla.loki.model.logcatFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -116,7 +115,6 @@ fun exportLogs(
     }
 }
 
-
 var stopLogger: (() -> Unit)? = null
 // You should pass in a CoroutineScope to launch the observer on the main thread
 
@@ -162,9 +160,8 @@ fun AppInfo.showLogs(
                 logcatFuture?.get() // Block until done or cancelled
             }
         } catch (e: CancellationException) {
-            // Expected on cancellation
+            e.printStackTrace()
         } catch (e: Exception) {
-            // Handle other errors
             e.printStackTrace()
         } finally {
             // Use the main dispatcher to call the exit callback if needed

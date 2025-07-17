@@ -21,7 +21,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import com.valhalla.loki.model.navItems
 import com.valhalla.loki.ui.appList.AppListScreen
-import com.valhalla.loki.ui.saved.SavedScreen
+import com.valhalla.loki.ui.saved.SavedLogActions
+import com.valhalla.loki.ui.saved.SavedLogsScreen
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
@@ -85,9 +86,16 @@ fun HomeScreen(
                 0 -> AppListScreen(
                     modifier.padding(paddingValues)
                 )
-                1 -> SavedScreen(
+                1 -> SavedLogsScreen(
                     modifier.padding(paddingValues)
-                )
+                ){ action ->
+                    when(action){
+                        is SavedLogActions.ViewMore -> {
+                        }
+                        is SavedLogActions.OnLogClick -> {
+                        }
+                    }
+                }
                 else -> { /* Other screens will go here */ }
             }
         }

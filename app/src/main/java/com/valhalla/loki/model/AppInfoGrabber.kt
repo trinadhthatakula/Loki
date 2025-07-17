@@ -23,7 +23,7 @@ class AppInfoGrabber(private val context: Context) {
         packs.indices.forEach { i ->
             val p = packs[i]
             val a = p.applicationInfo
-            if (p != null && a!=null && (a.flags and ApplicationInfo.FLAG_SYSTEM == 0)) {
+            if (p != null && a != null && (a.flags and ApplicationInfo.FLAG_SYSTEM == 0)) {
                 res.add(AppInfo().apply {
                     appName = a.loadLabel(context.packageManager).toString()
                     packageName = p.packageName
@@ -35,9 +35,10 @@ class AppInfoGrabber(private val context: Context) {
                     installerPackageName =
                         context.packageManager.getInstallerPackageName(p.packageName)
                     publicSourceDir = a.publicSourceDir
-                    splitPublicSourceDirs = a.splitPublicSourceDirs?.map { it }?:emptyList()
+                    splitPublicSourceDirs = a.splitPublicSourceDirs?.map { it } ?: emptyList()
                     enabled = a.enabled
-                    enabledState = context.packageManager.getApplicationEnabledSetting(p.packageName)
+                    enabledState =
+                        context.packageManager.getApplicationEnabledSetting(p.packageName)
                 })
             }
         }
@@ -55,7 +56,7 @@ class AppInfoGrabber(private val context: Context) {
         packs.indices.forEach { i ->
             val p = packs[i]
             val a = p.applicationInfo
-            if (p != null && a!=null && (a.flags and ApplicationInfo.FLAG_SYSTEM == 1)) {
+            if (p != null && a != null && (a.flags and ApplicationInfo.FLAG_SYSTEM == 1)) {
                 res.add(AppInfo().apply {
                     appName = a.loadLabel(context.packageManager).toString()
                     packageName = p.packageName
@@ -65,13 +66,21 @@ class AppInfoGrabber(private val context: Context) {
                     installerPackageName =
                         context.packageManager.getInstallerPackageName(p.packageName)
                     publicSourceDir = a.publicSourceDir
-                    splitPublicSourceDirs = a.splitPublicSourceDirs?.map { it }?:emptyList()
+                    splitPublicSourceDirs = a.splitPublicSourceDirs?.map { it } ?: emptyList()
                     enabled = a.enabled
-                    enabledState = context.packageManager.getApplicationEnabledSetting(p.packageName)
+                    enabledState =
+                        context.packageManager.getApplicationEnabledSetting(p.packageName)
                 })
             }
         }
         return res
     }
 
+    fun getAppInfo(packageName: String): AppInfo? {
+        return if (allApps.any { it.packageName == packageName }) {
+            allApps.first { it.packageName == packageName }
+        } else {
+            null
+        }
+    }
 }

@@ -14,6 +14,8 @@ kotlinx-serialization-json = "1.9.0"
 material3 = "1.4.0-alpha18"
 splashscreen = "1.0.1"
 koinAndroid = "4.1.0"
+shizuku = "13.1.5"
+hiddenapibypass = "6.1"
 
 [libraries]
 androidx-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
