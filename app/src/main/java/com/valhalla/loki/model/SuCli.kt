@@ -38,33 +38,16 @@ inline fun <T> withNewRootShell(
     return createRootShell(globalMnt).use(block)
 }
 
-fun Uri.getFileName(context: Context): String? {
-    var fileName: String? = null
-    val contentResolver: ContentResolver = context.contentResolver
-    val cursor: Cursor? = contentResolver.query(this, null, null, null, null)
-    cursor?.use {
-        if (it.moveToFirst()) {
-            fileName = it.getString(it.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME))
-        }
-    }
-    return fileName
-}
-
 fun createRootShell(globalMnt: Boolean = false): Shell {
     Shell.enableVerboseLogging = BuildConfig.DEBUG
     val builder = Shell.Builder.create()
     return try {
-        if (rootAvailable()) {
-            if (globalMnt) {
-                builder.build("su")
-            } else {
-                builder.build("su", "-mm")
-            }
+        if (globalMnt) {
+            builder.build("su")
         } else {
-            e(TAG, "su failed: root not available")
-            builder.build("sh")
+            builder.build("su", "-mm")
         }
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
         e(TAG, "su failed: ", e)
         builder.build("sh")
     }
