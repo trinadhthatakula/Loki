@@ -4,10 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import com.valhalla.loki.ui.screens.HomeScreen
+import com.valhalla.loki.ui.home.HomeScreen
 import com.valhalla.loki.ui.theme.LokiTheme
 
 class MainActivity : ComponentActivity() {
@@ -17,7 +15,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             LokiTheme {
-                HomeScreen()
+                HomeScreen(onExitConfirmed = { finish() })
             }
         }
     }

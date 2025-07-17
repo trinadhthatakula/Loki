@@ -74,4 +74,7 @@ dependencies {
 
     implementation(libs.topjohnwu.libsu.core)
 
+    implementation(libs.koin.android)
+    implementation(libs.koin.androidx.compose)
+
 }
