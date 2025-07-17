@@ -2,7 +2,7 @@
   <img src="app/src/main/launch-playstore.png" alt="Thor Logo" height="512">
 </p>
 
-<h1 align="center">Loki - Logger (Unstable)</h1>
+<h1 align="center">Loki - Logger</h1>
 
 * 100% Kotlin
 * Material 3 Design
