@@ -37,16 +37,21 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.valhalla.loki.R
+import com.valhalla.loki.model.Packages
 import com.valhalla.loki.model.PermissionManager
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
 fun OnboardingScreen(
     viewModel: OnboardingViewModel = koinViewModel(),
+    onShizukuRequested: () -> Unit,
     onSetupComplete: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+
+    val packages: Packages = koinInject<Packages>()
 
     // If Shizuku grant was successful, trigger the onSetupComplete callback
     LaunchedEffect(uiState.grantViaShizukuSuccess) {
@@ -82,7 +87,7 @@ fun OnboardingScreen(
                 description = "Use the existing root access on your device. This is the most powerful method.",
                 buttonText = "Continue with Root",
                 onClick = {
-                    if(PermissionManager.isRootAvailable())
+                    if (PermissionManager.isRootAvailable())
                         onSetupComplete
                     else {
                         Toast.makeText(
@@ -96,7 +101,10 @@ fun OnboardingScreen(
             Spacer(Modifier.height(16.dp))
 
             // --- Shizuku Option ---
-            if (uiState.isShizukuAvailable) {
+            if (
+                uiState.isShizukuAvailable ||
+                packages.getApplicationInfoOrNull("moe.shizuku.privileged.api") != null
+            ) {
                 PermissionCard(
                     title = "Shizuku",
                     description = "Use the Shizuku app to grant the necessary permission automatically. This does not require root.",

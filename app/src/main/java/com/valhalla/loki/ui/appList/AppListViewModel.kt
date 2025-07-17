@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.loki.model.AppInfo
 import com.valhalla.loki.model.AppInfoGrabber
+import com.valhalla.loki.model.PermissionManager
 import com.valhalla.loki.model.rootAvailable
 import com.valhalla.loki.services.LogcatService
 import kotlinx.coroutines.Dispatchers
@@ -149,7 +150,7 @@ class AppListViewModel(
     }
 
     fun handleAppClick(context: Context, appInfo: AppInfo, requestPermission: (String) -> Unit) {
-        if (_uiState.value.hasRootAccess) {
+        if (_uiState.value.hasRootAccess || PermissionManager.hasReadLogsPermission(context)) {
             if (_uiState.value.isLoggerRunning) {
                 // Already logging, show toast (handled in UI)
                 return

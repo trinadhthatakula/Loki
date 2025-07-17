@@ -7,6 +7,7 @@ import com.valhalla.loki.model.PermissionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import rikka.shizuku.Shizuku
 
 data class OnboardingUiState(
     val isRootAvailable: Boolean = false,

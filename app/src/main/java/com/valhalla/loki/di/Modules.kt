@@ -3,6 +3,7 @@ package com.valhalla.loki.di
 import android.app.Application
 import android.content.Context
 import com.valhalla.loki.model.AppInfoGrabber
+import com.valhalla.loki.model.Packages
 import com.valhalla.loki.ui.appList.AppListViewModel
 import com.valhalla.loki.ui.home.HomeViewModel
 import com.valhalla.loki.ui.onboarding.OnboardingScreen
@@ -20,6 +21,7 @@ var appModules = module{
     single<File> {
         get<Context>().filesDir
     }
+    singleOf(::Packages)
     singleOf(::AppInfoGrabber)
     viewModelOf(::AppListViewModel)
     viewModelOf(::HomeViewModel)

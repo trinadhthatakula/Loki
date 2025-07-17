@@ -3,6 +3,7 @@ package com.valhalla.loki.model
 import android.content.Context
 import android.util.Log.e
 import com.topjohnwu.superuser.Shell
+import com.topjohnwu.superuser.ShellUtils.fastCmd
 import com.valhalla.loki.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -105,7 +106,7 @@ fun AppInfo.fetchLogs(
             fetchLogsWithPermission(scope, outputFile, onExit)
 
         PermissionManager.isRootAvailable() ->
-            fetchLogsWithRoot(scope, outputFile, onExit)
+            fetchLogs(scope, outputFile, onExit)
 
         else -> {
             // No permissions available, exit gracefully.
@@ -124,14 +125,24 @@ private fun AppInfo.fetchLogsWithPermission(
     onExit: () -> Unit
 ) {
     scope.launch(Dispatchers.IO) {
-        var logcatProcess: Process?
+        var logcatProcess: Process? = null
         try {
             // Get the PID using a normal shell command. No root needed.
             val pidProcess = Runtime.getRuntime().exec(arrayOf("sh", "-c", "pidof $packageName"))
             val pId = pidProcess.inputStream.bufferedReader().readLine()?.trim() ?: ""
             pidProcess.waitFor()
 
-            val logCommand = "logcat --pid=$pId"
+            // --- CORRECTED LOGIC ---
+            // Choose the best logcat command based on whether we found a PID.
+            val logCommand = if (pId.isNotEmpty()) {
+                // If we have a PID, use it. This is the most accurate filter.
+                "logcat --pid=$pId"
+            } else {
+                // If no PID is found (app might not be running yet), fall back to filtering by log tag.
+                // The log tag is usually the package name. This is less precise but will still capture logs
+                // if the app starts later.
+                "logcat -s $packageName"
+            }
 
             // Clear logs before starting
             Runtime.getRuntime().exec("logcat -c").waitFor()
@@ -146,7 +157,7 @@ private fun AppInfo.fetchLogsWithPermission(
                     writer.newLine()
                 }
             }
-        } catch (_: IOException) {
+        } catch (e: IOException) {
             // This is expected when the process is destroyed by stopLogger
         } catch (e: Exception) {
             e.printStackTrace()
@@ -159,10 +170,59 @@ private fun AppInfo.fetchLogsWithPermission(
     }
 }
 
-/*private var logcatFuture: Future<Shell.Result>? = null
+/**
+ * Private implementation for fetching logs when root access is available.
+ * Uses the libsu library.
+ */
+private fun AppInfo.fetchLogsWithRoot(
+    scope: CoroutineScope,
+    outputFile: File,
+    onExit: () -> Unit
+) {
+    val shell = createRootShell()
+    shell.newJob().add("logcat -c").exec()
+
+    val pId = com.topjohnwu.superuser.ShellUtils.fastCmd(shell, "pidof $packageName").trim()
+    val logCommand = if (pId.isNotEmpty()) {
+        "logcat --pid=$pId"
+    } else {
+        "logcat | grep $packageName"
+    }
+
+    scope.launch(Dispatchers.IO) {
+        try {
+            outputFile.bufferedWriter().use { writer ->
+                val logcatFuture = shell.newJob()
+                    .add(logCommand)
+                    .to(object : ArrayList<String>() {
+                        override fun add(element: String): Boolean {
+                            writer.write(element)
+                            writer.newLine()
+                            return true
+                        }
+                    })
+                    .enqueue()
+
+                currentJob = RunningJob.RootJob(logcatFuture)
+                logcatFuture.get() // Block until done or cancelled
+            }
+        } catch (e: CancellationException) {
+            // Expected on cancellation
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            currentJob = null
+            withContext(Dispatchers.Main) {
+                onExit()
+            }
+        }
+    }
+}
+
+private var logcatFuture: Future<Shell.Result>? = null
 
 @Suppress("unused")
-private fun AppInfo.fetchLogs(
+fun AppInfo.fetchLogs(
     scope: CoroutineScope,
     outputFile: File,
     onExit: () -> Unit
@@ -206,51 +266,6 @@ private fun AppInfo.fetchLogs(
             e.printStackTrace()
         } finally {
             // Use the main dispatcher to call the exit callback if needed
-            withContext(Dispatchers.Main) {
-                onExit()
-            }
-        }
-    }
-}*/
-
-private fun AppInfo.fetchLogsWithRoot(
-    scope: CoroutineScope,
-    outputFile: File,
-    onExit: () -> Unit
-) {
-    val shell = createRootShell()
-    shell.newJob().add("logcat -c").exec()
-
-    val pId = com.topjohnwu.superuser.ShellUtils.fastCmd(shell, "pidof $packageName").trim()
-    val logCommand = if (pId.isNotEmpty()) {
-        "logcat --pid=$pId"
-    } else {
-        "logcat | grep $packageName"
-    }
-
-    scope.launch(Dispatchers.IO) {
-        try {
-            outputFile.bufferedWriter().use { writer ->
-                val logcatFuture = shell.newJob()
-                    .add(logCommand)
-                    .to(object : ArrayList<String>() {
-                        override fun add(element: String): Boolean {
-                            writer.write(element)
-                            writer.newLine()
-                            return true
-                        }
-                    })
-                    .enqueue()
-
-                currentJob = RunningJob.RootJob(logcatFuture)
-                logcatFuture.get() // Block until done or cancelled
-            }
-        } catch (e: CancellationException) {
-            // Expected on cancellation
-        } catch (e: Exception) {
-            e.printStackTrace()
-        } finally {
-            currentJob = null
             withContext(Dispatchers.Main) {
                 onExit()
             }

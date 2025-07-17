@@ -74,7 +74,6 @@ class LogcatService : Service() {
         startForeground(NOTIFICATION_ID, createNotification(appInfo.appName ?: "Unknown"))
 
         appInfo.fetchLogs(
-            context = this,
             scope = serviceScope,
             outputFile = logFile,
             onExit = {
