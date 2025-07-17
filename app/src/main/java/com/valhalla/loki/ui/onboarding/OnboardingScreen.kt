@@ -4,20 +4,40 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-
 import com.valhalla.loki.R
+import com.valhalla.loki.model.PermissionManager
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -34,48 +54,64 @@ fun OnboardingScreen(
             Toast.makeText(context, "Permission granted successfully!", Toast.LENGTH_SHORT).show()
             onSetupComplete()
         } else if (uiState.grantViaShizukuSuccess == false) {
-            Toast.makeText(context, "Failed to grant permission via Shizuku.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Failed to grant permission via Shizuku.", Toast.LENGTH_LONG)
+                .show()
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text("Welcome to Loki", style = MaterialTheme.typography.headlineMedium)
-        Spacer(Modifier.height(8.dp))
-        Text("To read logs from other apps, Loki needs special permissions. Please choose a method below.", style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.height(24.dp))
+    Scaffold {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(it)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("Welcome to Loki", style = MaterialTheme.typography.headlineMedium)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "To read logs from other apps, Loki needs special permissions. Please choose a method below.",
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(24.dp))
 
-        // --- Root Option ---
-        if (uiState.isRootAvailable) {
+            // --- Root Option ---
             PermissionCard(
                 title = "Root Access",
                 description = "Use the existing root access on your device. This is the most powerful method.",
                 buttonText = "Continue with Root",
-                onClick = onSetupComplete // Just proceed, no extra action needed
+                onClick = {
+                    if(PermissionManager.isRootAvailable())
+                        onSetupComplete
+                    else {
+                        Toast.makeText(
+                            context,
+                            "Root access is not available, please grant access and try again",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                } // Just proceed, no extra action needed
             )
             Spacer(Modifier.height(16.dp))
-        }
 
-        // --- Shizuku Option ---
-        if (uiState.isShizukuAvailable) {
-            PermissionCard(
-                title = "Shizuku",
-                description = "Use the Shizuku app to grant the necessary permission automatically. This does not require root.",
-                buttonText = "Grant via Shizuku",
-                isLoading = uiState.grantViaShizukuInProgress,
-                onClick = { viewModel.grantPermissionViaShizuku(context) }
-            )
-            Spacer(Modifier.height(16.dp))
-        }
+            // --- Shizuku Option ---
+            if (uiState.isShizukuAvailable) {
+                PermissionCard(
+                    title = "Shizuku",
+                    description = "Use the Shizuku app to grant the necessary permission automatically. This does not require root.",
+                    buttonText = "Grant via Shizuku",
+                    isLoading = uiState.grantViaShizukuInProgress,
+                    onClick = { viewModel.grantPermissionViaShizuku(context) }
+                )
+                Spacer(Modifier.height(16.dp))
+            }
 
-        // --- ADB Option ---
-        AdbCard()
+            // --- ADB Option ---
+            AdbCard()
+        }
     }
+
 }
 
 @Composable
@@ -120,7 +156,10 @@ private fun AdbCard() {
         Column(Modifier.padding(16.dp)) {
             Text("Manual ADB Command", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
-            Text("Connect your device to a computer with ADB and run the following command in your terminal:", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "Connect your device to a computer with ADB and run the following command in your terminal:",
+                style = MaterialTheme.typography.bodyMedium
+            )
             Spacer(Modifier.height(16.dp))
             Surface(
                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -138,7 +177,8 @@ private fun AdbCard() {
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clipboard =
+                            context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val clip = ClipData.newPlainText("ADB Command", adbCommand)
                         clipboard.setPrimaryClip(clip)
                         Toast.makeText(context, "Command copied!", Toast.LENGTH_SHORT).show()
@@ -152,7 +192,11 @@ private fun AdbCard() {
                 onClick = { /* User needs to manually confirm */ },
                 modifier = Modifier.align(Alignment.End)
             ) {
-                Icon(painterResource(R.drawable.done), "Done", modifier = Modifier.padding(end = 8.dp))
+                Icon(
+                    painterResource(R.drawable.done),
+                    "Done",
+                    modifier = Modifier.padding(end = 8.dp)
+                )
                 Text("I have run the command")
             }
         }
