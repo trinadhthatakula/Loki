@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -35,7 +36,9 @@ data class AppListUiState(
     val selectedAppForPermission: AppInfo? = null,
     val logLines: List<String> = emptyList(),
     val currentLogFile: File? = null,
-    val isRefreshing: Boolean = false // Added for pull-to-refresh
+    val isRefreshing: Boolean = false,
+    val searchQuery: String = "", // Added for search functionality
+    val filteredApps: List<AppInfo> = emptyList() // Added for search functionality
 )
 
 class AppListViewModel(
@@ -49,12 +52,30 @@ class AppListViewModel(
         loadApps()
         observeLogcatServiceState()
         observeLogFile()
-        checkRootAccess ()
+        checkRootAccess()
+        observeSearchQuery() // Observe search query changes
+    }
+
+    private fun observeSearchQuery() {
+        viewModelScope.launch {
+            _uiState.collectLatest { uiState ->
+                val allApps = (uiState.userApps + uiState.systemApps).sortedBy { it.appName }
+                val filtered = if (uiState.searchQuery.isBlank()) {
+                    allApps
+                } else {
+                    allApps.filter { app ->
+                        app.appName?.contains(uiState.searchQuery, ignoreCase = true) == true ||
+                                app.packageName.contains(uiState.searchQuery, ignoreCase = true)
+                    }
+                }
+                _uiState.update { it.copy(filteredApps = filtered) }
+            }
+        }
     }
 
     fun checkRootAccess() {
-        viewModelScope.launch { 
-            _uiState.update { 
+        viewModelScope.launch {
+            _uiState.update {
                 it.copy(
                     hasRootAccess = rootAvailable()
                 )
@@ -64,14 +85,16 @@ class AppListViewModel(
 
     fun loadApps() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
+            _uiState.update { it.copy(isLoading = true) }
             val userApps = grabber.getUserApps()
             val systemApps = grabber.getSystemApps()
-            _uiState.value = _uiState.value.copy(
-                userApps = userApps,
-                systemApps = systemApps,
-                isLoading = false
-            )
+            _uiState.update {
+                it.copy(
+                    userApps = userApps,
+                    systemApps = systemApps,
+                    isLoading = false
+                )
+            }
         }
     }
 
@@ -82,7 +105,7 @@ class AppListViewModel(
     private fun observeLogcatServiceState() {
         viewModelScope.launch {
             LogcatService.isRunning.collectLatest { isRunning ->
-                _uiState.value = _uiState.value.copy(isLoggerRunning = isRunning)
+                _uiState.update { it.copy(isLoggerRunning = isRunning) }
             }
         }
     }
@@ -90,11 +113,11 @@ class AppListViewModel(
     private fun observeLogFile() {
         viewModelScope.launch {
             LogcatService.currentLogFile.collectLatest { file ->
-                _uiState.value = _uiState.value.copy(currentLogFile = file)
+                _uiState.update { it.copy(currentLogFile = file) }
                 if (file != null) {
                     tailLogFile(file)
                 } else {
-                    _uiState.value = _uiState.value.copy(logLines = listOf("Waiting for log file..."))
+                    _uiState.update { it.copy(logLines = listOf("Waiting for log file...")) }
                 }
             }
         }
@@ -102,7 +125,7 @@ class AppListViewModel(
 
     private fun tailLogFile(logFile: File) {
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.value = _uiState.value.copy(logLines = emptyList())
+            _uiState.update { it.copy(logLines = emptyList()) }
             try {
                 // Wait a moment for the file to be created and written to
                 delay(250)
@@ -111,7 +134,7 @@ class AppListViewModel(
                     val line = reader.readLine()
                     if (line != null) {
                         withContext(Dispatchers.Main) {
-                            _uiState.value = _uiState.value.copy(logLines = _uiState.value.logLines + line)
+                            _uiState.update { it.copy(logLines = it.logLines + line) }
                         }
                     } else {
                         delay(300) // Wait for more content
@@ -119,14 +142,14 @@ class AppListViewModel(
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    _uiState.value = _uiState.value.copy(logLines = _uiState.value.logLines + "Error reading log file: ${e.message}")
+                    _uiState.update { it.copy(logLines = it.logLines + "Error reading log file: ${e.message}") }
                 }
             }
         }
     }
 
     fun handleAppClick(context: Context, appInfo: AppInfo, requestPermission: (String) -> Unit) {
-        if(_uiState.value.hasRootAccess) {
+        if (_uiState.value.hasRootAccess) {
             if (_uiState.value.isLoggerRunning) {
                 // Already logging, show toast (handled in UI)
                 return
@@ -141,7 +164,7 @@ class AppListViewModel(
                     }
 
                     else -> {
-                        _uiState.value = _uiState.value.copy(selectedAppForPermission = appInfo)
+                        _uiState.update { it.copy(selectedAppForPermission = appInfo) }
                         requestPermission(Manifest.permission.POST_NOTIFICATIONS)
                     }
                 }
@@ -149,8 +172,8 @@ class AppListViewModel(
                 // No runtime permission needed for pre-Tiramisu
                 startLogService(appInfo, context)
             }
-        }else {
-            _uiState.update { 
+        } else {
+            _uiState.update {
                 it.copy(showRootRestricted = true)
             }
         }
@@ -158,11 +181,11 @@ class AppListViewModel(
 
     fun onPermissionResult(isGranted: Boolean, context: Context) {
         if (isGranted) {
-            _uiState.value.selectedAppForPermission?.let { startLogService(it,context) }
+            _uiState.value.selectedAppForPermission?.let { startLogService(it, context) }
         } else {
             // Permission denied, show toast (handled in UI)
         }
-        _uiState.value = _uiState.value.copy(selectedAppForPermission = null)
+        _uiState.update { it.copy(selectedAppForPermission = null) }
     }
 
     private fun startLogService(appInfo: AppInfo, context: Context) {
@@ -183,10 +206,14 @@ class AppListViewModel(
     }
 
     fun setBottomSheetVisibility(isVisible: Boolean) {
-        _uiState.value = _uiState.value.copy(showBottomSheet = isVisible)
+        _uiState.update { it.copy(showBottomSheet = isVisible) }
     }
 
     fun hideRootRestrictedDialog() {
         _uiState.update { it.copy(showRootRestricted = false) }
+    }
+
+    fun setSearchQuery(query: String) {
+        _uiState.update { it.copy(searchQuery = query) }
     }
 }

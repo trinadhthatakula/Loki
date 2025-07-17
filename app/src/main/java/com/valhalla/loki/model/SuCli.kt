@@ -1,10 +1,5 @@
 package com.valhalla.loki.model
 
-import android.content.ContentResolver
-import android.content.Context
-import android.database.Cursor
-import android.net.Uri
-import android.provider.OpenableColumns
 import android.util.Log.e
 import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ShellUtils.fastCmd
@@ -31,6 +26,7 @@ fun getRootShell(globalMnt: Boolean = false): Shell {
     }
 }
 
+@Suppress("unused")
 inline fun <T> withNewRootShell(
     globalMnt: Boolean = false,
     block: Shell.() -> T
@@ -63,6 +59,7 @@ fun rootAvailable(): Boolean {
     }
 }
 
+@Suppress("unused")
 fun exportLogs(
     appInfo: AppInfo,
     file: File,

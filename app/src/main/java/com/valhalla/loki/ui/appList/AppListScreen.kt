@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -25,6 +26,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -104,6 +106,28 @@ fun AppListScreen(
                 }
             }
         }
+        OutlinedTextField(
+            value = uiState.searchQuery,
+            onValueChange = { appListViewModel.setSearchQuery(it) },
+            label = { Text("Search apps") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            shape = RoundedCornerShape(50),
+            trailingIcon = {
+                if (uiState.searchQuery.isNotEmpty())
+                    IconButton(
+                        onClick = {
+                            appListViewModel.setSearchQuery("")
+                        }
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.close),
+                            "Clear"
+                        )
+                    }
+            }
+        )
         if (uiState.isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 LoadingIndicator()
@@ -117,7 +141,7 @@ fun AppListScreen(
                     .fillMaxSize()
             ) {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items((uiState.userApps + uiState.systemApps).sortedBy { it.appName }) { app ->
+                    items(uiState.filteredApps) { app ->
                         ListItem(
                             leadingContent = {
                                 Box {
@@ -204,7 +228,7 @@ fun AppListScreen(
 @Composable
 private fun LoggerBottomSheetContent(
     logLines: List<String>,
-    currentLogFile: File?,
+    currentLogFile: File?,//will be used in future to export logs
     onStop: () -> Unit
 ) {
     val listState = rememberLazyListState()
