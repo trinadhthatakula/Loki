@@ -2,9 +2,32 @@ version: 2
 updates:
   - package-ecosystem: gradle
     directory: /
+    # Dependabot opens its PRs against the DEFAULT branch unless told otherwise, and
+    # Loki's default is `master` — which only ever receives promotions from `dev`. A
+    # dependency PR landing directly on master would jump the ladder: it would reach
+    # the branch that publishes to users without ever having been built on dev.
+    target-branch: dev
     schedule:
       interval: daily
     groups:
       maven:
+        patterns:
+          - "*"
+
+  # Actions are the other half of the supply chain, and the half nobody notices. A
+  # workflow here can hold `contents: write` and the signing keystore, so a compromised
+  # or simply abandoned action is a bigger problem than an out-of-date library — and
+  # without this ecosystem, every version in .github/workflows/ silently rots.
+  #
+  # Weekly, not daily: the action versions in this repo are pinned deliberately (some
+  # by tag, actionlint and shellcheck by version AND SHA256 inside the run steps, which
+  # Dependabot cannot see at all). A daily cadence would mostly produce noise.
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
         patterns:
           - "*"

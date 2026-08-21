@@ -1,0 +1,98 @@
+# Path-based auto-labelling for pull requests (actions/labeler v7).
+# Run by .github/workflows/labeler.yml, which only ever ADDS labels — see the
+# sync-labels note there before adding a rule you expect to remove one.
+#
+# `mode:` labels are deliberately absent from this file. Root vs Shizuku vs neither
+# describes how a bug was REPRODUCED, not which files a PR touched, so those are
+# applied by hand during issue triage and by the reporter through the bug template.
+# The nearest code-side equivalent is `area: privileged` below.
+#
+# Every label named here must exist in the repository before it can be applied —
+# actions/labeler cannot create one. A missing label is a red run on an otherwise
+# fine PR.
+
+# The privileged surface, and the reason this file leads with it. These are the
+# files that reach READ_LOGS through a root shell or Shizuku's binder, which makes
+# them the ones where a change assembles a command that runs with more authority
+# than the app has. A PR carrying this label wants a reviewer who knows that, and
+# wants the privilege-mode line in the PR template filled in for real.
+#
+# Broader than the three files CONTRIBUTING.md names, on purpose: a helper extracted
+# out of SuCli.kt is still the privileged surface, and it would not match a
+# file-by-file list.
+"area: privileged":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "app/src/**/SuCli*"
+          - "app/src/**/PermissionManager*"
+          - "app/src/**/Shizuku*"
+          - "app/src/**/*Privilege*"
+          - "app/src/main/AndroidManifest.xml"
+
+# Log capture itself: the foreground service, the readers, the export path. Distinct
+# from `area: privileged` — this is what happens with the stream once something has
+# the right to read it — though a change often touches both, which is fine.
+"area: capture":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "app/src/**/services/**"
+          - "app/src/**/*Logcat*"
+          - "app/src/**/*LogReader*"
+
+"area: ui/ux":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "app/src/**/ui/**"
+          - "app/src/**/res/drawable*/**"
+          - "app/src/**/res/layout*/**"
+          - "app/src/**/res/mipmap*/**"
+
+"area: onboarding":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "app/src/**/onboarding/**"
+
+# values-* only. The base values/ directory holds colours, dimensions and themes,
+# which are not translations — labelling a theme tweak `localization` sends it to
+# the wrong reviewer.
+"area: localization":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "app/src/**/res/values-*/**"
+          - "**/strings.xml"
+          # Store and F-Droid listings are translated the same way and by the same
+          # people, so they belong under the same label.
+          - "fastlane/metadata/android/**"
+
+# Workflows, the scripts they call, and the scripts' own tests. A PR here can change
+# what every other PR is allowed to merge, which is worth flagging on its own.
+"area: ci":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/**"
+          - ".github/scripts/**"
+          - ".coderabbit.yaml"
+
+"dependencies":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "gradle/libs.versions.toml"
+          - "**/build.gradle.kts"
+          - "settings.gradle.kts"
+          - "gradle/wrapper/**"
+          - "update_dependencies.py"
+
+# release-notes/** is under `release` rather than `documentation`: notes gate the
+# master rung (check-notes-budget.sh fails the publish without them), so a change
+# there is release machinery, not prose.
+"release":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "release-notes/**"
+          - "gradle.properties"
+
+"documentation":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - "docs/**"

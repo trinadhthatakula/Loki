@@ -1,0 +1,53 @@
+name: Close stale needs-info issues
+
+# Deliberately narrow. This closes ONE kind of issue: a bug report that a
+# maintainer labelled `needs info` and the reporter never came back to.
+#
+# It does not touch feature requests, confirmed bugs, unlabelled issues, or pull
+# requests. A bug that nobody has got round to is still a bug, and auto-closing it
+# does not fix it — it hides it and tells the reporter their report was not worth
+# keeping. `only-labels` below is what enforces that, and it is the setting to leave
+# alone.
+on:
+  schedule:
+    - cron: '43 3 * * *' # daily, 03:43 UTC — off-the-hour to dodge cron backlog
+  # So the policy can be exercised on demand after editing it, rather than waiting
+  # a day to find out what it does.
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  # Read-only, and it stays that way: the two -1 settings below mean this workflow
+  # never writes to a pull request, so granting it write access would be granting a
+  # capability with no caller.
+  pull-requests: read
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v11
+        with:
+          # The whole policy, in one line. Without it this action's default is
+          # "every open issue and PR in the repository".
+          only-labels: "needs info"
+          days-before-stale: 21
+          days-before-close: 7
+          stale-issue-label: "stale"
+          # An issue a maintainer has already reproduced, or flagged as important,
+          # is not waiting on the reporter in the way this workflow assumes — even
+          # if `needs info` is also still attached.
+          exempt-issue-labels: "confirmed,priority: high"
+          stale-issue-message: >
+            This issue has been waiting on additional information for 21 days, so it's been marked
+            stale. If it's still relevant, please add the requested details — logs, device and
+            Android version, and whether you're using Root or Shizuku — and it'll be picked back
+            up. Otherwise it will close in 7 days.
+          close-issue-message: >
+            Closing due to inactivity — no response to the request for more information. This
+            isn't a judgement on the report; there just isn't enough to act on. Comment with the
+            details any time and it can be reopened.
+          # -1 disables both halves for pull requests. A PR going quiet is a
+          # conversation between people, and a bot closing it is the wrong actor.
+          days-before-pr-stale: -1
+          days-before-pr-close: -1

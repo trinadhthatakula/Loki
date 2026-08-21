@@ -1,0 +1,78 @@
+name: ✨ Feature request
+description: Suggest an idea or improvement
+title: "[Feature]: "
+labels: ["enhancement", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion.
+
+        Please describe the **problem** you're trying to solve, not only the solution you have in
+        mind — the problem is what determines whether there's a better approach, and it survives
+        longer than any particular design.
+
+        Loki is early and deliberately narrow: it reads, filters, saves and exports logcat. A
+        request that fits that shape is much more likely to land than one that widens it.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight checklist
+      options:
+        - label: I searched existing issues and didn't find a duplicate.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do, and what's missing or awkward today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would you like Loki to do?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Log capture & filtering
+        - Live monitoring / crash detection
+        - Saving, exporting & sharing
+        - App list / app picker
+        - Onboarding & permission setup
+        - UI / theming
+        - Performance
+        - Localization
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: privilege
+    attributes:
+      label: Does this need extra privilege?
+      description: >-
+        Anything that reaches beyond Loki's own process needs root or Shizuku, which limits who can
+        use it. Worth saying up front if you already know.
+      options:
+        - No — should work with what Loki already has
+        - Yes — needs root
+        - Yes — needs root or Shizuku
+        - Not sure
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you're using now, or other approaches you weighed up.
