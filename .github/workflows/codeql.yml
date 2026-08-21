@@ -30,8 +30,17 @@ on:
   schedule:
     - cron: '41 3 * * 1' # weekly, Monday 03:41 UTC
 
+# The event name is part of the group, not decoration. A `schedule` run executes on
+# the default branch, so its `github.ref` is `refs/heads/master` — byte-identical to
+# the ref of a push to master. Without the event name those two share a group, and
+# `cancel-in-progress` then kills whichever started first. Losing the scheduled run
+# is the bad half of that trade: it exists precisely to run newly-published queries
+# against code that has not changed, so cancelling it drops coverage no other trigger
+# will produce, and it does so silently — a cancelled run is not a failed one and
+# nothing reports it. PR refs (`refs/pull/N/merge`) never collided; this is only
+# about schedule versus push.
 concurrency:
-  group: codeql-${{ github.ref }}
+  group: codeql-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
