@@ -23,7 +23,7 @@ Loki has exactly two permanent branches. Everything else is a short-lived topic 
 | `dev` | Integration branch. All work lands here first. | Anyone, via PR |
 | `master` | What the public is running. The default branch. | Maintainer, via PR from `dev` |
 
-```
+```text
   feature/x ─┐
   fix/y ─────┼──▶ dev ──────────▶ master
   translate/z┘     │                 │

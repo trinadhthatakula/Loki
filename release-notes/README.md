@@ -2,7 +2,7 @@
 
 Curated notes for each Loki release live here, one directory per version:
 
-```
+```text
 release-notes/
   v1.0.0/
     github.md       ← the GitHub release body
@@ -74,20 +74,36 @@ Notes worth following:
 Plain text, no Markdown — F-Droid and IzzyOnDroid render it as-is. 500 characters, which is roughly
 four short lines. It is a summary, not a truncation of `github.md`.
 
-```
+```text
 Fixes log capture stopping after a couple of minutes under Shizuku, and saved
 logs no longer lose their app name after a restart.
 
 New: filter by log level while capturing.
 ```
 
-Emoji count as characters, not bytes — `check-notes-budget.sh` measures characters, because that is
-how the services enforcing these caps measure them, so a "✨" costs 1 there and not 3.
+**The two caps are not the same kind of thing, and it matters.** The 125,000 on `github.md` is a
+real limit the GitHub API enforces in characters, so counting characters there is counting the thing
+that will actually reject you. The 500 here is **self-imposed**: Loki has no Play pipeline, and the
+F-Droid-family clients that read `fastlane/.../changelogs/<code>.txt` truncate rather than refuse.
+Nothing in the world rejects a 600-character `playstore.txt` today. It is an editorial budget kept
+at Play's number so the file stays portable if that conversation ever happens, and `--require
+playstore.txt` is how a house rule gets teeth.
 
-That said, keep this file close to plain text and comfortably under budget rather than exactly at
-it. The 500 is Play's limit; the F-Droid-family clients that read
-`fastlane/.../changelogs/<code>.txt` do their own truncation, and a changelog written right up to
-one service's cap is the one that gets cut off mid-sentence in another.
+`check-notes-budget.sh` counts **Unicode code points** — Python's `len()` over the decoded text — so
+"✨" costs 1, not the 3 bytes it occupies. Two consequences worth knowing before trusting the number:
+
+- **Bytes are never checked.** Non-ASCII is fine and deliberate: `hi-IN` and `te-IN` changelogs are
+  non-ASCII by construction, so an ASCII-only check would reject exactly the translations
+  [`fastlane/README.md`](../fastlane/README.md) invites. Do not "tighten" this into an ASCII rule.
+- **Play, if it ever applies, counts UTF-16 code units, not code points.** Those agree for every
+  character in the Basic Multilingual Plane and disagree for anything above it: "🎉" (U+1F389) is 1
+  code point but 2 UTF-16 units. A file of 500 emoji would pass here and be 1,000 units to Play. That
+  is a latent gap rather than a live bug, because there is no Play upload to fail — worth fixing on
+  the day that changes, not before.
+
+Either way, keep this file close to plain text and comfortably under budget rather than exactly at
+it. A changelog written right up to one service's cap is the one that gets cut off mid-sentence in
+another.
 
 ## Which rung needs what
 
