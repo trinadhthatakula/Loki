@@ -40,9 +40,9 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -62,6 +62,8 @@ import com.valhalla.asgard.components.AsgardListRow
 import com.valhalla.asgard.components.AsgardSectionCard
 import com.valhalla.asgard.components.AsgardSettingRow
 import com.valhalla.asgard.components.AsgardSettingToggleRow
+import com.valhalla.asgard.components.ConnectedButtonGroup
+import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.loki.BuildConfig
 import com.valhalla.loki.model.ThemeMode
 import com.valhalla.loki.services.LokiDocumentsProvider
@@ -117,7 +119,6 @@ fun SettingsScreen(
     ) { /* nothing to persist */ }
 
     var showAdbSheet by remember { mutableStateOf(false) }
-    var showThemeSheet by remember { mutableStateOf(false) }
     var showLicenceSheet by remember { mutableStateOf(false) }
     var showThanksSheet by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
@@ -229,12 +230,39 @@ fun SettingsScreen(
 
             item {
                 AsgardSectionCard(title = "Appearance", modifier = Modifier.fillMaxWidth()) {
-                    AsgardSettingRow(
+                    // A closed set of three does not deserve a modal surface. A sheet costs a
+                    // window, an animation and two taps to change nothing, and it hides the two
+                    // options you did not pick; the segmented control shows all three and settles
+                    // in one tap. This is the shape Thor uses for the same job (SettingsPickerRow
+                    // in presentation/settings/SettingsComponents.kt): the row states what is being
+                    // chosen, the group below it does the choosing.
+                    AsgardListRow(
                         title = "Theme",
                         subtitle = "Light, dark, or follow the system",
                         icon = theme.mode.icon,
-                        value = theme.mode.label,
-                        onClick = { showThemeSheet = true },
+                    )
+                    ConnectedButtonGroup(
+                        items = ThemeMode.entries.map {
+                            ConnectedButtonGroupItem.Label(it.label)
+                        },
+                        selectedIndex = ThemeMode.entries.indexOf(theme.mode),
+                        onItemSelected = { viewModel.setThemeMode(ThemeMode.entries[it]) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, bottom = 4.dp),
+                        // The Material default gives unchecked buttons `surfaceContainer`, which is
+                        // the grey immediately above the card's own `surfaceContainerLow` — one step
+                        // apart in the ladder, and in the AMOLED scheme that is #0A0A0A on black.
+                        // Verified on device: the two unpicked options read as bare text, so the
+                        // control does not look like a control. `surfaceContainerHighest` is the
+                        // one token that stays visible against all three schemes.
+                        colors = ToggleButtonDefaults.toggleButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            checkedContainerColor = MaterialTheme.colorScheme.primary,
+                            checkedContentColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                        contentDescription = "Theme",
                     )
                     AsgardSettingToggleRow(
                         title = "AMOLED black",
@@ -351,26 +379,6 @@ fun SettingsScreen(
         }
     }
 
-    if (showThemeSheet) {
-        ModalBottomSheet(onDismissRequest = { showThemeSheet = false }) {
-            SheetBody(title = "Theme") {
-                ThemeMode.entries.forEach { mode ->
-                    AsgardListRow(
-                        title = mode.label,
-                        icon = mode.icon,
-                        trailing = {
-                            RadioButton(
-                                selected = theme.mode == mode,
-                                onClick = { viewModel.setThemeMode(mode) },
-                            )
-                        },
-                        onClick = { viewModel.setThemeMode(mode) },
-                    )
-                }
-            }
-        }
-    }
-
     if (showLicenceSheet) {
         ModalBottomSheet(onDismissRequest = { showLicenceSheet = false }) {
             SheetBody(title = "Licence") {
@@ -477,10 +485,16 @@ private fun SheetBody(title: String, content: @Composable () -> Unit) {
     }
 }
 
-/** The label shown in the row and in the theme sheet. Never persisted — see [ThemeMode.token]. */
+/**
+ * The button labels. One word each, because each one has to fit a third of the group's width at any
+ * font scale — `ConnectedButtonGroup` ellipsises rather than overflowing, so "Follow system" would
+ * read as "Follow s…". The row's subtitle above carries the longer explanation instead.
+ *
+ * Never persisted — see [ThemeMode.token] for the stored form.
+ */
 private val ThemeMode.label: String
     get() = when (this) {
-        ThemeMode.SYSTEM -> "Follow system"
+        ThemeMode.SYSTEM -> "System"
         ThemeMode.LIGHT -> "Light"
         ThemeMode.DARK -> "Dark"
     }
