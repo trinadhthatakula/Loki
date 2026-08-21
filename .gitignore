@@ -29,6 +29,14 @@ release.jks
 *.keystore
 google-play-api.json
 
+# A base64 encoding of the keystore IS the keystore — `base64 --decode` is not a
+# password. The patterns above do not match `loki.jks.base64`, and this is a file
+# generated once to paste into ANDROID_KEYSTORE_BASE64 and then forgotten about,
+# sitting in the repo root next to the key it encodes. Generate it, paste it, delete it.
+*.jks.base64
+*.jks.b64
+*.keystore.base64
+
 # --- BUILD OUTPUTS ---
 #
 # /build is already ignored above, but AGP also writes the copy-to-release-directory

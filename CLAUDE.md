@@ -102,7 +102,9 @@ read the same layout — it is not evidence of Play intent.
 - Blank counts as absent for signing credentials. `${{ secrets.X }}` expands to `""` for a secret
   that does not exist, so `hasSigningCredentials` in `app/build.gradle.kts` tests
   `!isNullOrBlank()`. A `!= null` test reports credentials on a repo that has none and then dies in
-  `validateSigningRelease`.
+  the signing step. Note `validateSigningRelease` is **not** the gate people assume: it checks only
+  that a keystore file is set and present, so wrong passwords pass it and fail later in
+  `:app:packageRelease` — after R8 has run.
 - A fresh clone builds **unsigned** on purpose, so the ladder can be exercised before the keystore
   secrets exist.
 

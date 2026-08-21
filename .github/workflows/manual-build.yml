@@ -147,8 +147,8 @@ jobs:
       # The keystore env vars are passed only when the decode actually succeeded.
       # `${{ secrets.X }}` expands to the empty string for a secret that does not
       # exist, and a present-but-blank KEY_ALIAS makes app/build.gradle.kts assign a
-      # signingConfig it cannot use — which dies in validateSigningRelease instead
-      # of falling back to unsigned. Same guard as release-rung.yml.
+      # signingConfig it cannot use — which dies in the signing step instead of
+      # falling back to unsigned. Same guard as release-rung.yml.
       - name: Assemble
         env:
           VARIANT: ${{ inputs.variant }}

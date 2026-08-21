@@ -155,7 +155,7 @@ jobs:
       # Needs no secrets: the release build type assigns signingConfig only when
       # jks.properties or a non-blank KEY_ALIAS exists (`hasSigningCredentials` in
       # app/build.gradle.kts, which exists so a fresh clone can still build), so this
-      # produces an unsigned release APK rather than dying in validateSigningRelease.
+      # produces an unsigned release APK rather than dying in the signing step.
       - name: Assemble minified release (R8)
         id: r8
         run: ./gradlew assembleRelease --stacktrace

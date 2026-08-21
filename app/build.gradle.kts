@@ -23,7 +23,13 @@ val keystorePropertiesFile: File = rootProject.file("jks.properties")
 // a build that fails later and somewhere else. A `jks.properties` missing one key used to reach
 // `keystoreProperties["keyPassword"] as String` and throw an NPE naming the cast rather than the
 // key; an environment with only some of the variables set used to assign a config with an empty
-// keyAlias and die in `validateSigningRelease`, which names neither the source nor the value.
+// keyAlias and then die in the signing step itself, which names neither the source nor the value.
+//
+// Not `validateSigningRelease`, incidentally — that task checks only that a keystore file is set
+// and present, so it passes with credentials that cannot open it. Wrong credentials survive all
+// the way to `:app:packageRelease`, which reports "Failed to read key <alias> from store <path>:
+// keystore password was incorrect". Failing at configuration time, as this block does, is the
+// whole point: an R8 run happens in between.
 //
 // Blank counts as absent, not present. `${{ secrets.KEY_ALIAS }}` expands to the EMPTY STRING
 // when the secret does not exist, so a `!= null` test would report credentials on a repository
@@ -140,7 +146,13 @@ android {
                 keyAlias = credentials.getValue("keyAlias")
                 keyPassword = credentials.getValue("keyPassword")
                 storePassword = credentials.getValue("storePassword")
-                storeFile = file(credentials.getValue("storeFile"))
+                // rootProject.file, not file. This script's `file()` resolves a relative path
+                // against app/, but jks.properties sits at the REPO ROOT — so `storeFile=loki.jks`,
+                // which is what anyone writes when the key is sitting next to the properties file
+                // that names it, would resolve to app/loki.jks and fail with a missing-file error
+                // pointing at a directory the key was never in. Absolute paths are unaffected,
+                // which is what CI passes via KEYSTORE_FILE_PATH.
+                storeFile = rootProject.file(credentials.getValue("storeFile"))
             } else {
                 logger.lifecycle(
                     "No jks.properties and no signing credentials in the environment — the " +

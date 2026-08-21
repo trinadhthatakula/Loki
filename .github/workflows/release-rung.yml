@@ -257,7 +257,8 @@ jobs:
       # strings would be worse than omitting them — `${{ secrets.X }}` on a missing secret
       # expands to "", which System.getenv() reports as a present-but-blank value, and
       # app/build.gradle.kts would then assign a signingConfig with an empty keyAlias and
-      # die in validateSigningRelease. `hasSigningCredentials` treats blank as absent for
+      # die in the signing step — after R8, since validateSigningRelease only checks that a
+      # keystore file is set and present. `hasSigningCredentials` treats blank as absent for
       # the same reason; this is the belt to that brace.
       - name: Assemble release
         env:
