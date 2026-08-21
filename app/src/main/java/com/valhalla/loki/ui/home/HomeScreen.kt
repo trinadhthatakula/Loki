@@ -23,6 +23,7 @@ import com.valhalla.loki.model.navItems
 import com.valhalla.loki.ui.appList.AppListScreen
 import com.valhalla.loki.ui.saved.SavedLogActions
 import com.valhalla.loki.ui.saved.SavedLogsScreen
+import com.valhalla.loki.ui.settings.SettingsScreen
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
@@ -30,7 +31,11 @@ import org.koin.androidx.compose.koinViewModel
 fun HomeScreen(
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = koinViewModel(),
-    onExitConfirmed: () -> Unit // Callback to handle app exit
+    onExitConfirmed: () -> Unit, // Callback to handle app exit
+    // Shizuku's grant flow needs an Activity to bind the permission callback to, which a
+    // composable does not have, so the Activity hands the trigger down rather than the screen
+    // reaching for it.
+    onRequestShizuku: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val pagerState = rememberPagerState(pageCount = { navItems.size })
@@ -96,7 +101,10 @@ fun HomeScreen(
                         }
                     }
                 }
-                else -> { /* Other screens will go here */ }
+                else -> SettingsScreen(
+                    modifier = modifier.padding(paddingValues),
+                    onRequestShizuku = onRequestShizuku,
+                )
             }
         }
 

@@ -11,6 +11,7 @@ import com.valhalla.loki.ui.appList.AppListViewModel
 import com.valhalla.loki.ui.home.HomeViewModel
 import com.valhalla.loki.ui.onboarding.OnboardingViewModel
 import com.valhalla.loki.ui.saved.SavedLogsViewModel
+import com.valhalla.loki.ui.settings.SettingsViewModel
 import com.valhalla.superuser.ktx.RealShellRepository
 import com.valhalla.superuser.ktx.ShellRepository
 import org.koin.android.ext.koin.androidContext
@@ -39,6 +40,7 @@ var appModules = module {
     viewModelOf(::HomeViewModel)
     viewModelOf(::SavedLogsViewModel)
     viewModelOf(::OnboardingViewModel)
+    viewModelOf(::SettingsViewModel)
 }
 
 fun Application.initKoin() = startKoin {

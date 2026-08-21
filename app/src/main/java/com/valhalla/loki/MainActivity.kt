@@ -71,21 +71,22 @@ class MainActivity : ComponentActivity() {
                     var canGoForward by remember { mutableStateOf(false) }
                     LaunchedEffect(Unit) {
                         canGoForward = permissionManager.isRootAvailable() ||
-                                permissionManager.hasReadLogsPermission(this@MainActivity)
+                                permissionManager.hasReadLogsPermission()
                     }
                     */
                     //if (canGoForward) {
-                    HomeScreen(onExitConfirmed = { finish() })
+                    HomeScreen(
+                        onExitConfirmed = { finish() },
+                        onRequestShizuku = { requestShizuku() },
+                    )
                     /*} else {
                         OnboardingScreen(
                             onShizukuRequested = {
                                 requestShizuku()
                             },
                             onSetupComplete = {
-                                canGoForward =
-                                    permissionManager.isRootAvailable() || permissionManager.hasReadLogsPermission(
-                                        this
-                                    )
+                                canGoForward = permissionManager.isRootAvailable() ||
+                                        permissionManager.hasReadLogsPermission()
                             }
                         )
                     }*/
@@ -146,7 +147,7 @@ class MainActivity : ComponentActivity() {
      */
     private fun grantReadLogs() {
         lifecycleScope.launch {
-            val granted = permissionManager.grantReadLogsViaShizuku(this@MainActivity)
+            val granted = permissionManager.grantReadLogsViaShizuku()
             Toast.makeText(
                 this@MainActivity,
                 if (granted) "READ_LOGS granted via Shizuku."

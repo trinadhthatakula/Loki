@@ -122,7 +122,7 @@ fun OnboardingScreen(
                     description = "Use the Shizuku app to grant the necessary permission automatically. This does not require root.",
                     buttonText = "Grant via Shizuku",
                     isLoading = uiState.grantViaShizukuInProgress,
-                    onClick = { viewModel.grantPermissionViaShizuku(context) }
+                    onClick = { viewModel.grantPermissionViaShizuku() }
                 )
                 Spacer(Modifier.height(16.dp))
             }

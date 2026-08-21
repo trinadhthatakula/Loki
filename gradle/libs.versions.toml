@@ -44,6 +44,12 @@ androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-toolin
 androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
+# Material Icons Extended. Frozen upstream at 1.7.8 and no longer developed, but it is still the
+# only complete Material glyph set available to Compose, and the alternative is hand-porting
+# Material Symbols vector XML per icon. Deliberately NOT a transitive of Asgard UI: Asgard hand-
+# builds the one glyph it needs so that consuming apps are not forced into this dependency — the
+# choice belongs to the app, and Loki makes it here. BOM-managed, so no version ref.
+androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 # Asgard UI — the shared Compose component library, extracted from Thor's design system. Theme
 # agnostic: every colour, type and shape comes from the host MaterialTheme, so there is no
 # AsgardTheme to install. The coordinate is the KMP root module, which redirects Android

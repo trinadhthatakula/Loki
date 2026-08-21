@@ -230,6 +230,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.material.icons.extended)
 
     /// Asgard UI — shared Compose components (theme-agnostic; reads the host MaterialTheme)
     implementation(libs.asgard)

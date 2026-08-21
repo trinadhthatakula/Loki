@@ -75,7 +75,7 @@ class LogcatCapture(
         job = scope.launch(Dispatchers.IO) {
             val mode = try {
                 when {
-                    permissionManager.hasReadLogsPermission(context) -> {
+                    permissionManager.hasReadLogsPermission() -> {
                         captureWithReadLogs(appInfo.packageName, outputFile)
                         CaptureMode.READ_LOGS
                     }

@@ -149,7 +149,7 @@ class AppListViewModel(
     }
 
     fun handleAppClick(context: Context, appInfo: AppInfo, requestPermission: (String) -> Unit) {
-        if (_uiState.value.hasRootAccess || permissionManager.hasReadLogsPermission(context)) {
+        if (_uiState.value.hasRootAccess || permissionManager.hasReadLogsPermission()) {
             if (_uiState.value.isLoggerRunning) {
                 // Already logging, show toast (handled in UI)
                 return

@@ -1,6 +1,5 @@
 package com.valhalla.loki.ui.onboarding
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.loki.model.PermissionManager
@@ -62,10 +61,10 @@ class OnboardingViewModel(
         _uiState.value = _uiState.value.copy(continueWithRootResult = null)
     }
 
-    fun grantPermissionViaShizuku(context: Context) {
+    fun grantPermissionViaShizuku() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(grantViaShizukuInProgress = true)
-            val success = permissionManager.grantReadLogsViaShizuku(context)
+            val success = permissionManager.grantReadLogsViaShizuku()
             _uiState.value = _uiState.value.copy(
                 grantViaShizukuInProgress = false,
                 grantViaShizukuSuccess = success

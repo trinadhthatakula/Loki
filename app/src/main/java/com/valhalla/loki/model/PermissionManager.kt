@@ -22,15 +22,22 @@ enum class PermissionMethod {
  * Root is reached through Odin's [ShellRepository]. Every root answer is therefore a
  * `suspend` one: probing root means spawning or reusing a `su` process, which must never
  * happen on the main thread.
+ *
+ * The [Context] is a constructor dependency rather than a per-call parameter. Both facts this
+ * class reads from it — our own granted permissions and our own package name — are properties of
+ * the application, not of whatever screen happens to be asking, so threading an Activity through
+ * every call only invited a ViewModel to hold one as a field. This is the application context, from
+ * Koin's `androidContext()`, and `PermissionManager` is a singleton that lives as long as it does.
  */
 class PermissionManager(
+    private val context: Context,
     private val shell: ShellRepository
 ) {
 
     /**
      * Checks if the app has been granted the READ_LOGS permission directly.
      */
-    fun hasReadLogsPermission(context: Context): Boolean {
+    fun hasReadLogsPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.READ_LOGS
@@ -61,7 +68,7 @@ class PermissionManager(
      * Uses a Shizuku shell to grant the READ_LOGS permission to this app.
      * Returns true on success.
      */
-    suspend fun grantReadLogsViaShizuku(context: Context): Boolean = withContext(Dispatchers.IO) {
+    suspend fun grantReadLogsViaShizuku(): Boolean = withContext(Dispatchers.IO) {
         if (!isShizukuAvailable()) return@withContext false
         try {
             // context.packageName is our own package, so there is nothing here an attacker
