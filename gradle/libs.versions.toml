@@ -19,6 +19,11 @@ material3 = "1.5.0-alpha26"
 # in app/build.gradle.kts before lowering either number.
 asgardUi = "2.0.0"
 splashscreen = "1.2.0"
+# Navigation 3 and DataStore both need explicit versions: the Compose BOM contains only
+# `androidx.compose*` groups, so it manages neither these nor the lifecycle artifacts.
+# Both pins match Thor's.
+navigation3 = "1.1.6"
+datastorePreferences = "1.2.1"
 koinAndroid = "4.2.2"
 shizuku = "13.1.5"
 
@@ -49,6 +54,15 @@ odin = { module = "com.trinadhthatakula:odin", version.ref = "odin" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinx-serialization-json" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
+#Navigation 3 — typed, @Serializable NavKey back stack (see docs/review-anon-contribution.md §10.4)
+androidx-navigation3-runtime = { module = "androidx.navigation3:navigation3-runtime", version.ref = "navigation3" }
+androidx-navigation3-ui = { module = "androidx.navigation3:navigation3-ui", version.ref = "navigation3" }
+# Scopes a ViewModel to a NavEntry instead of the Activity. Shipped on the lifecycle release
+# train, not navigation3's, so it takes the lifecycle ref despite being a nav artifact.
+androidx-lifecycle-viewmodel-navigation3 = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-navigation3", version.ref = "lifecycleRuntimeKtx" }
+androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycleRuntimeKtx" }
+#DataStore — the theme store, replacing the contribution's SharedPreferences
+androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastorePreferences" }
 #Koin
 koin-android = { module = "io.insert-koin:koin-android", version.ref = "koinAndroid" }
 koin-androidx-compose = { module = "io.insert-koin:koin-androidx-compose", version.ref = "koinAndroid" }

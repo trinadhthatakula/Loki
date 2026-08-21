@@ -108,6 +108,10 @@ kotlin {
         optIn.add("kotlin.RequiresOptIn")
         optIn.add("kotlin.time.ExperimentalTime")
         optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
+        // ModalBottomSheet and rememberBottomSheetState are still experimental, and sheets are
+        // the default transient surface under docs/review-anon-contribution.md §10.7 — so this
+        // would otherwise be a repeated @OptIn on most new UI files.
+        optIn.add("androidx.compose.material3.ExperimentalMaterial3Api")
     }
 }
 
@@ -230,8 +234,17 @@ dependencies {
     /// Asgard UI — shared Compose components (theme-agnostic; reads the host MaterialTheme)
     implementation(libs.asgard)
 
+    /// Navigation 3
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.navigation3.ui)
+    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
+
     /// Lifecycle
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+
+    /// DataStore — theme preferences
+    implementation(libs.androidx.datastore.preferences)
 
     /// Test
     testImplementation(libs.junit)
