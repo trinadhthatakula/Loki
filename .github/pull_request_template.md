@@ -3,6 +3,8 @@ Thanks for contributing to Loki.
 
 Two things before you fill this in:
   • PRs target `dev`, not `master`. If GitHub picked `master` for you, change the base.
+    The one exception is a maintainer promoting `dev` as-is to cut a stable release —
+    that PR targets `master` on purpose.
   • Don't bump `versionCode` in gradle.properties, UNLESS this is a release PR — those
     exist to carry the bump and nothing else. Either way it may only ever go UP.
     See docs/branching-and-releases.md.
@@ -47,7 +49,7 @@ services/, this is the only way a reviewer knows what was really run.
 ## Checklist
 
 - [ ] Scoped to the stated purpose — no unrelated edits, no drive-by reformatting
-- [ ] Targets `dev`
+- [ ] Targets `dev` — or `master`, if this is a maintainer promoting `dev` to cut a stable release
 - [ ] No `versionCode` change in `gradle.properties` — or, for a release PR, the bump is the
       only change and it increases the code
 - [ ] No secrets, keystores, `jks.properties` or local paths committed

@@ -21,8 +21,9 @@ All contributors and AI agents follow this workflow:
    - `docs/<doc-topic>` for documentation
    - `chore/<task-name>` for dependencies and maintenance
 3. **Never commit directly to a protected branch.** Do not push to `dev` or `master`.
-4. **Target `dev` in PRs.** Every pull request goes to **`dev`**. A PR opened against `master` will
-   be asked to retarget — `master` receives release promotions from `dev` and nothing else.
+4. **Target `dev` in PRs.** Your pull request goes to **`dev`**; one opened against `master` will be
+   asked to retarget. `master` receives exactly one kind of PR — a maintainer promoting `dev` as-is
+   to cut a stable release — and that is not a contribution route, it is the release step.
 5. **No version bumps.** Do not edit `versionCode` in `gradle.properties` in your PR. Releases are
    cut separately; see [`docs/branching-and-releases.md`](docs/branching-and-releases.md).
 

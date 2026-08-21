@@ -90,16 +90,14 @@ at Play's number so the file stays portable if that conversation ever happens, a
 playstore.txt` is how a house rule gets teeth.
 
 `check-notes-budget.sh` counts **Unicode code points** — Python's `len()` over the decoded text — so
-"✨" costs 1, not the 3 bytes it occupies. Two consequences worth knowing before trusting the number:
+"✨" costs 1, not the 3 bytes it occupies. Two things follow:
 
-- **Bytes are never checked.** Non-ASCII is fine and deliberate: `hi-IN` and `te-IN` changelogs are
-  non-ASCII by construction, so an ASCII-only check would reject exactly the translations
+- **Bytes are never checked, and that is deliberate.** `hi-IN` and `te-IN` changelogs are non-ASCII
+  by construction, so an ASCII-only or byte-counted check would reject exactly the translations
   [`fastlane/README.md`](../fastlane/README.md) invites. Do not "tighten" this into an ASCII rule.
-- **Play, if it ever applies, counts UTF-16 code units, not code points.** Those agree for every
-  character in the Basic Multilingual Plane and disagree for anything above it: "🎉" (U+1F389) is 1
-  code point but 2 UTF-16 units. A file of 500 emoji would pass here and be 1,000 units to Play. That
-  is a latent gap rather than a live bug, because there is no Play upload to fail — worth fixing on
-  the day that changes, not before.
+- **The unit already matches Play's**, for whenever that conversation happens. Play documents its
+  release-note limit as 500 *Unicode characters* per language, which is what code points are — so
+  the count here is measuring the same thing Play would, and no conversion is lurking.
 
 Either way, keep this file close to plain text and comfortably under budget rather than exactly at
 it. A changelog written right up to one service's cap is the one that gets cut off mid-sentence in

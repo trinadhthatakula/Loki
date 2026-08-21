@@ -25,8 +25,13 @@ expected to follow literally.
    - `docs/<doc-topic>`
    - `chore/<task-name>`
 
-4. **Pull requests always target `dev`.** Never open one against `master`. A PR opened against
-   `master` will be asked to retarget.
+4. **Pull requests target `dev`.** A PR opened against `master` will be asked to retarget.
+
+   **The one exception is the promotion itself.** `master` receives its changes by PR like everything
+   else — a maintainer opens `dev` → `master` to cut a stable release. So "never open a PR against
+   `master`" would forbid the one PR the ladder is built around. The rule is: `dev` for all work,
+   `master` only for a maintainer promoting `dev` as-is. If you are reading this to decide where to
+   put your change, the answer is `dev`.
 
 5. **Do not bump `versionCode`** in a feature or fix PR. Releases are cut separately; see
    [`docs/branching-and-releases.md`](docs/branching-and-releases.md).
