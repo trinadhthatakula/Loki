@@ -7,14 +7,21 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.valhalla.loki.model.Packages
 import com.valhalla.loki.model.PermissionManager
+import com.valhalla.loki.model.ThemeManager
+import com.valhalla.loki.model.ThemeMode
+import com.valhalla.loki.model.ThemeSettings
 import com.valhalla.loki.ui.home.HomeScreen
 import com.valhalla.loki.ui.onboarding.OnboardingScreen
 import com.valhalla.loki.ui.theme.LokiTheme
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 import rikka.shizuku.Shizuku
@@ -23,39 +30,66 @@ class MainActivity : ComponentActivity() {
 
     private val permissionManager: PermissionManager by inject()
     private val packages: Packages by inject()
+    private val themeManager: ThemeManager by inject()
+
+    /** Null until DataStore has answered once. The splash screen stays up while it is. */
+    private val themeSettings = MutableStateFlow<ThemeSettings?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        installSplashScreen()
+        val splashScreen = installSplashScreen()
         enableEdgeToEdge()
+
+        // DataStore answers asynchronously, so the first composition would otherwise paint the
+        // DEFAULT theme and flip to the stored one a frame or two later — a visible flash on every
+        // cold start for anyone who is not on the defaults. Holding the splash costs nothing (it is
+        // already on screen) and cannot deadlock: ThemeManager.settings catches IOException and
+        // emits defaults, so the flow always produces a first value.
+        splashScreen.setKeepOnScreenCondition { themeSettings.value == null }
+        lifecycleScope.launch {
+            themeManager.settings.collect { themeSettings.value = it }
+        }
+
         setContent {
-            LokiTheme {
-                // The onboarding gate is currently disabled. `canGoForward` is commented out with
-                // it deliberately: probing root is a `su` spawn (and possibly a root-manager
-                // prompt), and doing that on every cold start for a value nothing reads is noise.
-                // Restore it together with the OnboardingScreen branch below.
-                /*
-                var canGoForward by remember { mutableStateOf(false) }
-                LaunchedEffect(Unit) {
-                    canGoForward = permissionManager.isRootAvailable() ||
-                            permissionManager.hasReadLogsPermission(this@MainActivity)
+            val settings by themeSettings.collectAsState()
+            // Nothing to draw until the stored theme arrives; the splash screen covers this.
+            settings?.let { theme ->
+                LokiTheme(
+                    darkTheme = when (theme.mode) {
+                        ThemeMode.LIGHT -> false
+                        ThemeMode.DARK -> true
+                        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                    },
+                    dynamicColor = theme.dynamicColor,
+                    amoledMode = theme.amoled,
+                ) {
+                    // The onboarding gate is currently disabled. `canGoForward` is commented out
+                    // with it deliberately: probing root is a `su` spawn (and possibly a
+                    // root-manager prompt), and doing that on every cold start for a value nothing
+                    // reads is noise. Restore it together with the OnboardingScreen branch below.
+                    /*
+                    var canGoForward by remember { mutableStateOf(false) }
+                    LaunchedEffect(Unit) {
+                        canGoForward = permissionManager.isRootAvailable() ||
+                                permissionManager.hasReadLogsPermission(this@MainActivity)
+                    }
+                    */
+                    //if (canGoForward) {
+                    HomeScreen(onExitConfirmed = { finish() })
+                    /*} else {
+                        OnboardingScreen(
+                            onShizukuRequested = {
+                                requestShizuku()
+                            },
+                            onSetupComplete = {
+                                canGoForward =
+                                    permissionManager.isRootAvailable() || permissionManager.hasReadLogsPermission(
+                                        this
+                                    )
+                            }
+                        )
+                    }*/
                 }
-                */
-                //if (canGoForward) {
-                HomeScreen(onExitConfirmed = { finish() })
-                /*} else {
-                    OnboardingScreen(
-                        onShizukuRequested = {
-                            requestShizuku()
-                        },
-                        onSetupComplete = {
-                            canGoForward =
-                                permissionManager.isRootAvailable() || permissionManager.hasReadLogsPermission(
-                                    this
-                                )
-                        }
-                    )
-                }*/
             }
         }
     }

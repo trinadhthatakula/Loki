@@ -6,6 +6,7 @@ import com.valhalla.loki.model.AppInfoGrabber
 import com.valhalla.loki.model.LogcatCapture
 import com.valhalla.loki.model.Packages
 import com.valhalla.loki.model.PermissionManager
+import com.valhalla.loki.model.ThemeManager
 import com.valhalla.loki.ui.appList.AppListViewModel
 import com.valhalla.loki.ui.home.HomeViewModel
 import com.valhalla.loki.ui.onboarding.OnboardingViewModel
@@ -30,6 +31,9 @@ var appModules = module {
     singleOf(::Packages)
     singleOf(::AppInfoGrabber)
     singleOf(::PermissionManager)
+    // Single, because a second instance would be a second DataStore over the same file, which
+    // throws. Resolves `Context` from androidContext(), like Packages does.
+    singleOf(::ThemeManager)
     singleOf(::LogcatCapture)
     viewModelOf(::AppListViewModel)
     viewModelOf(::HomeViewModel)
