@@ -67,7 +67,9 @@ jobs:
           # not process any code written in Java/Kotlin" — a red check on every PR.
           #
           # So the Kotlin compiler has to actually run, with CodeQL's tracer wrapped
-          # around it. `:app:compileDebugKotlin` is the smallest task that does that.
+          # around it — and "the task ran" is not the same claim as "the compiler ran",
+          # which is a second trap the build step below deals with at length.
+          # `:app:compileDebugKotlin` is the smallest task that does that.
           # There is no KSP and no kapt in this project, so a fuller `assembleDebug`
           # would extract nothing this task misses — it would only add R8, lint,
           # packaging and resource processing to every analysis, none of which
@@ -89,6 +91,13 @@ jobs:
 
       # Before init, so that the JDK the build will use is already the one on PATH
       # when CodeQL sets up tracing around it.
+      #
+      # `cache: 'gradle'` restores ~/.gradle/caches, and that directory contains TWO
+      # different things: the dependency cache (modules-2), which is a pure download
+      # saving and is why this is enabled at all, and the build cache (build-cache-1),
+      # which stores task OUTPUTS and will happily satisfy a compile without compiling.
+      # The second one breaks this workflow — see the build step below, which disables
+      # it explicitly rather than giving up the first one.
       - name: Set up JDK 21
         uses: actions/setup-java@v5.7.0
         with:
@@ -103,17 +112,46 @@ jobs:
           build-mode: ${{ matrix.build-mode }}
 
       # Everything between init and analyze runs inside CodeQL's tracer, which is the
-      # only reason this step exists — the compiled output is thrown away.
+      # only reason this step exists — the compiled output is thrown away. What CodeQL
+      # records is the compiler ACTUALLY RUNNING, so every flag here exists to guarantee
+      # that it does. A build that succeeds without compiling is the failure mode.
       #
-      # `--no-daemon` is not tidiness. A reused Gradle daemon is a long-lived process
-      # that can pre-date the tracer, and compilation happening inside one is
-      # compilation CodeQL never sees; the failure mode is an empty database, not an
-      # error. The Kotlin compile daemon is a child of this traced process, so it is
-      # traced normally.
+      # `--no-daemon`: a reused Gradle daemon is a long-lived process that can pre-date
+      # the tracer, and compilation inside one is compilation CodeQL never sees. The
+      # Kotlin compile daemon is a child of this traced process, so it is traced normally.
+      #
+      # `--no-build-cache`: load-bearing, and the reason this workflow was previously
+      # non-deterministic. gradle.properties sets `org.gradle.caching=true`, and the step
+      # above restores build-cache-1, so on any run where the cache already held this
+      # tree Gradle satisfied :app:compileDebugKotlin FROM-CACHE — no compiler process,
+      # no traced compilation, empty database, `database finalize` exit 32 with "CodeQL
+      # could not process any code written in Java/Kotlin". Commit e961ee3 demonstrated
+      # it precisely: the same commit passed in 3m52s with a cold cache and failed in 2s
+      # eight minutes later with a warm one. The check therefore passed the FIRST time on
+      # any new tree and failed on every re-run, which is worse than failing outright.
       - name: Build Kotlin for the CodeQL database
         run: |
+          set -euo pipefail
           chmod +x gradlew
-          ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
+          log="$RUNNER_TEMP/kotlin-compile.log"
+          ./gradlew :app:compileDebugKotlin \
+            --no-daemon --no-build-cache --console=plain --stacktrace 2>&1 | tee "$log"
+
+          # Assert the compile genuinely EXECUTED. A cached, up-to-date or source-less
+          # task exits 0 and leaves identical class files behind, so nothing before
+          # `analyze` would notice — and `analyze` reports it as a generic exit 32 that
+          # says nothing about the cause. This turns that into a named failure at the
+          # step that caused it.
+          task='> Task :app:compileDebugKotlin'
+          if ! grep -qF "$task" "$log"; then
+            echo "::error::':app:compileDebugKotlin' never appeared in the Gradle task log, so no Kotlin was compiled under CodeQL's tracer and the database will be empty. Did the task name change?" >&2
+            exit 1
+          fi
+          if grep -qE "^${task} (FROM-CACHE|UP-TO-DATE|NO-SOURCE)\$" "$log"; then
+            echo "::error::':app:compileDebugKotlin' did not execute — Gradle reported $(grep -oE "^${task} .*\$" "$log" | head -n 1 | awk '{print $NF}'). The Kotlin compiler never ran, so CodeQL traced nothing and 'database finalize' would exit 32. --no-build-cache is set, so if you are seeing this, something else is short-circuiting the task." >&2
+            exit 1
+          fi
+          echo "':app:compileDebugKotlin' executed — the tracer saw a real compile."
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4.37.6
