@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit auto-reviews pull requests against the repository's DEFAULT branch only,
+# out of the box. Loki's default branch is `master`, and master receives nothing but
+# release promotions from `dev` — every feature, fix and chore PR targets `dev`.
+#
+# Without this file, CodeRabbit would therefore review the release merges (where the
+# code has already been reviewed once and merged) and skip every PR where review
+# actually changes the outcome.
+language: en-US
+reviews:
+  auto_review:
+    enabled: true
+    # In addition to the default branch, not instead of it.
+    base_branches:
+      - dev
+  path_instructions:
+    # The privileged surface. Worth spelling out because the risk here is not a
+    # generic Android one: these files run commands through a root shell or Shizuku's
+    # binder, with authority the app itself does not hold.
+    - path: "app/src/main/java/com/valhalla/loki/{model/SuCli.kt,model/PermissionManager.kt,services/**}"
+      instructions: >-
+        This is Loki's privileged surface: code here reaches android.permission.READ_LOGS
+        through a root shell (libsu) or Shizuku, so it executes with authority the app
+        does not otherwise have. Flag any string that reaches a shell command without
+        having come from PackageManager or an equivalent trusted source — a package name
+        or filter from user input is a command injection into a root shell. Flag any path
+        where a captured log could leave the device or reach another app; logcat contains
+        tokens and third parties' data. Flag privileged operations that are not gated on
+        an actual permission check.
+    - path: ".github/workflows/**"
+      instructions: >-
+        Release and CI machinery. Flag any new `paths:` or `branches:` filter on
+        pr-ci.yml — it is a required status check, and a path-skipped required check
+        blocks merges forever. Flag any use of an untrusted expression
+        (github.event.*.title, .body, .ref) inside a `run:` block; those belong in `env:`.
+        Flag pull_request_target gaining a checkout of PR code. Flag an unpinned
+        third-party action, and any secret reaching a job that did not previously hold one.
+    - path: ".github/scripts/**"
+      instructions: >-
+        These scripts gate publishing. They must stay POSIX-ish and bash-3.2 safe because
+        contributors run them on macOS: guard array expansion with ${#arr[@]} before
+        "${arr[@]}", and never expand a variable in the same `local` statement that assigns
+        it. Every one of them has a test file under .github/scripts/test/ — a behaviour
+        change without a test change is worth flagging.

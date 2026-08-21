@@ -1,0 +1,1 @@
+Read, filter, save and share any app's logcat. Needs root or Shizuku.
