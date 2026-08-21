@@ -62,17 +62,23 @@ Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported privately to the maintainer, who is the only community leader
 responsible for enforcement at present.
 
-Loki does not yet have a dedicated conduct address. Until it does, use the
-[private reporting form on the repository's Security tab](https://github.com/trinadhthatakula/Loki/security/advisories/new).
-That form exists for vulnerability reports, so it is a stopgap rather than the
-right tool — but it is the one channel here that is genuinely private, it
-reaches the maintainer and nobody else, and a conduct report sent through it
-will be treated as a conduct report.
+**Email <trinadh.thatakula@gmail.com>**, with *Loki conduct* in the subject line
+so it is not mistaken for a support question. This is the maintainer's personal
+address rather than a team alias, so it reaches one person and nobody else. It is
+published here in plain text deliberately — an address a reporter has to decode
+first is an address that does not get used.
 
-If the person you need to report is the maintainer, or you would rather not
-route it through this repository at all, GitHub's own
+If you would rather not write to a personal address, the
+[private reporting form on the repository's Security tab](https://github.com/trinadhthatakula/Loki/security/advisories/new)
+reaches the same person through GitHub. That form is built for vulnerability
+reports, so it is the wrong shape for a conduct report — but it is genuinely
+private, and one sent through it will be treated as a conduct report.
+
+**If the person you need to report is the maintainer, neither route above is
+right** — both end in the inbox of the person being reported. Use GitHub's own
 [abuse and spam reporting](https://docs.github.com/en/communities/maintaining-your-safety-on-github/reporting-abuse-or-spam)
-goes to GitHub Support instead and is entirely independent of this project.
+instead: it goes to GitHub Support and is entirely independent of this project.
+The same applies if you report something here and hear nothing back.
 
 All complaints will be reviewed and investigated promptly and fairly.
 

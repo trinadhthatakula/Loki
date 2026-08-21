@@ -20,6 +20,14 @@ contact_links:
     url: https://github.com/trinadhthatakula/Loki/security/advisories/new
     about: Do not open a public issue for a security problem. This opens a private advisory visible only to you and the maintainer.
 
+  # A conduct report must not become a public issue either, and the person making one
+  # is the least likely to go hunting for the route. This link is an https blob URL
+  # rather than a `mailto:`: the address it points at is in the file, and a malformed
+  # entry here takes the whole template chooser down with it.
+  - name: 🤝 Report a Code of Conduct concern (private)
+    url: https://github.com/trinadhthatakula/Loki/blob/master/CODE_OF_CONDUCT.md#enforcement
+    about: Conduct reports go privately to the maintainer by email, never in a public issue.
+
   - name: 📖 Contributing, branching & release process
     url: https://github.com/trinadhthatakula/Loki/blob/master/CONTRIBUTING.md
     about: How to build Loki, which branch to target, and what CI will run on your PR.
