@@ -21,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import com.valhalla.loki.model.navItems
 import com.valhalla.loki.ui.appList.AppListScreen
-import com.valhalla.loki.ui.saved.SavedLogActions
 import com.valhalla.loki.ui.saved.SavedLogsScreen
 import com.valhalla.loki.ui.settings.SettingsScreen
 import kotlinx.coroutines.launch
@@ -93,14 +92,7 @@ fun HomeScreen(
                 )
                 1 -> SavedLogsScreen(
                     modifier.padding(paddingValues)
-                ){ action ->
-                    when(action){
-                        is SavedLogActions.ViewMore -> {
-                        }
-                        is SavedLogActions.OnLogClick -> {
-                        }
-                    }
-                }
+                )
                 else -> SettingsScreen(
                     modifier = modifier.padding(paddingValues),
                     onRequestShizuku = onRequestShizuku,

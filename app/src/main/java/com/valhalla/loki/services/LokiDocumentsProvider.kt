@@ -13,6 +13,7 @@ import android.provider.DocumentsProvider
 import android.webkit.MimeTypeMap
 import com.valhalla.loki.BuildConfig
 import com.valhalla.loki.R
+import com.valhalla.loki.model.logsDir
 import java.io.File
 import java.io.FileNotFoundException
 
@@ -49,7 +50,7 @@ class LokiDocumentsProvider : DocumentsProvider() {
     // A getter, not `by lazy`: `context` is null until onCreate() and a cached lazy would capture
     // whatever it was at first touch. filesDir is a cheap field read on the Context.
     private val rootDir: File
-        get() = File(requireCtx().filesDir, LOGS_DIR_NAME)
+        get() = requireCtx().logsDir
 
     private fun requireCtx(): Context = context
         ?: throw IllegalStateException("LokiDocumentsProvider queried before onCreate()")
@@ -285,9 +286,6 @@ class LokiDocumentsProvider : DocumentsProvider() {
         const val ROOT_DOCUMENT_ID = "/"
 
         private const val ROOT_TITLE = "Loki logs"
-
-        /** Matches `LogcatService`'s output directory and `SavedLogsViewModel`'s reader. */
-        private const val LOGS_DIR_NAME = "logs"
 
         private const val SEARCH_MAX_DEPTH = 4
         private const val SEARCH_RESULT_LIMIT = 256

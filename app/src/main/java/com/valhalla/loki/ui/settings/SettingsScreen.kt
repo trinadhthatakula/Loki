@@ -69,8 +69,8 @@ import com.valhalla.loki.model.ThemeMode
 import com.valhalla.loki.services.LokiDocumentsProvider
 import com.valhalla.loki.ui.theme.monoFontFamily
 import com.valhalla.loki.ui.theme.success
+import com.valhalla.loki.ui.widgets.formatBytes
 import org.koin.androidx.compose.koinViewModel
-import java.util.Locale
 
 /** The repository URL, shown and opened by the About section. */
 private const val SOURCE_URL = "https://github.com/trinadhthatakula/Loki"
@@ -505,12 +505,6 @@ private val ThemeMode.icon: ImageVector
         ThemeMode.LIGHT -> Icons.Filled.LightMode
         ThemeMode.DARK -> Icons.Filled.DarkMode
     }
-
-private fun formatBytes(bytes: Long): String = when {
-    bytes < 1_024 -> "$bytes B"
-    bytes < 1_024 * 1_024 -> String.format(Locale.getDefault(), "%.1f KB", bytes / 1_024.0)
-    else -> String.format(Locale.getDefault(), "%.1f MB", bytes / (1_024.0 * 1_024.0))
-}
 
 private fun Context.copyToClipboard(label: String, text: String) {
     val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

@@ -7,6 +7,7 @@ import com.valhalla.loki.model.LogcatCapture
 import com.valhalla.loki.model.Packages
 import com.valhalla.loki.model.PermissionManager
 import com.valhalla.loki.model.ThemeManager
+import com.valhalla.loki.model.logsDir
 import com.valhalla.loki.ui.appList.AppListViewModel
 import com.valhalla.loki.ui.home.HomeViewModel
 import com.valhalla.loki.ui.onboarding.OnboardingViewModel
@@ -18,15 +19,12 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
 import org.koin.core.module.dsl.singleOf
+import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
-import java.io.File
 
 var appModules = module {
-    single<File> {
-        get<Context>().filesDir
-    }
     // Odin's root shell. Bound as the interface so tests and previews can swap it.
     singleOf(::RealShellRepository) bind ShellRepository::class
     singleOf(::Packages)
@@ -38,9 +36,24 @@ var appModules = module {
     singleOf(::LogcatCapture)
     viewModelOf(::AppListViewModel)
     viewModelOf(::HomeViewModel)
-    viewModelOf(::SavedLogsViewModel)
     viewModelOf(::OnboardingViewModel)
-    viewModelOf(::SettingsViewModel)
+    // Spelled out rather than viewModelOf(::X), because both of these take a File and there is no
+    // unqualified File binding to resolve it from. There used to be one — `single<File> { filesDir }`
+    // — and it meant any future File dependency silently got filesDir whatever it actually wanted.
+    viewModel {
+        SavedLogsViewModel(
+            logsDir = get<Context>().logsDir,
+            appInfoGrabber = get(),
+        )
+    }
+    viewModel {
+        SettingsViewModel(
+            permissionManager = get(),
+            logcatCapture = get(),
+            themeManager = get(),
+            logsDir = get<Context>().logsDir,
+        )
+    }
 }
 
 fun Application.initKoin() = startKoin {

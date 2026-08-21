@@ -4,7 +4,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,10 +26,11 @@ import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -59,7 +59,9 @@ fun AppListScreen(
     val context = LocalContext.current
     val uiState by appListViewModel.uiState.collectAsState()
 
-    val sheetState = rememberModalBottomSheetState()
+    // rememberModalBottomSheetState is deprecated in the pinned Material3; Hidden is the initial
+    // value it used to imply, and the default enabledValues match its skipPartiallyExpanded = false.
+    val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
 
     // --- PERMISSION HANDLING ---
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -143,39 +145,34 @@ fun AppListScreen(
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(uiState.filteredApps) { app ->
                         ListItem(
-                            leadingContent = {
-                                Box {
-                                    Image(
-                                        painter = rememberDrawablePainter(
-                                            getAppIcon(
-                                                app.packageName,
-                                                context
-                                            )
-                                        ),
-                                        "App Icon",
-                                        modifier = Modifier.Companion
-                                            .padding(5.dp)
-                                            .size(50.dp)
-                                    )
-                                }
-                            },
-                            headlineContent = { Text(app.appName ?: "Unknown") },
-                            supportingContent = { Text(app.packageName) },
-                            modifier = Modifier.clickable {
+                            onClick = {
                                 if (uiState.isLoggerRunning) {
                                     Toast.makeText(
                                         context,
                                         "A logging session is already running.",
                                         Toast.LENGTH_SHORT
-                                    )
-                                        .show()
-                                    return@clickable
+                                    ).show()
+                                } else {
+                                    appListViewModel.handleAppClick(context, app) { permission ->
+                                        notificationPermissionLauncher.launch(permission)
+                                    }
                                 }
-                                appListViewModel.handleAppClick(context, app) { permission ->
-                                    notificationPermissionLauncher.launch(permission)
-                                }
-                            }
-                        )
+                            },
+                            leadingContent = {
+                                Image(
+                                    painter = rememberDrawablePainter(
+                                        getAppIcon(app.packageName, context)
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .padding(5.dp)
+                                        .size(50.dp)
+                                )
+                            },
+                            supportingContent = { Text(app.packageName) },
+                        ) {
+                            Text(app.appName ?: "Unknown")
+                        }
                     }
                 }
             }

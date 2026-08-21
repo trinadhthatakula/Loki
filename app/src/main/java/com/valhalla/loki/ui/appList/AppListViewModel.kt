@@ -85,20 +85,30 @@ class AppListViewModel(
 
     fun loadApps() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-            val userApps = grabber.getUserApps()
-            val systemApps = grabber.getSystemApps()
+            // A pull-to-refresh keeps the list on screen and spins its own indicator; only the first
+            // load replaces the list with a spinner. Raising isLoading either way meant the pull
+            // gesture threw the list away and PullToRefreshBox's indicator was never shown at all,
+            // because nothing set isRefreshing.
+            _uiState.update { it.copy(isLoading = !it.isRefreshing) }
+            // One package sweep on Dispatchers.IO. This used to be two sweeps — getUserApps() then
+            // getSystemApps() — run straight on the main thread, and each of them loaded a label per
+            // installed app, which is a resource-APK open apiece.
+            val (systemApps, userApps) = withContext(Dispatchers.IO) {
+                grabber.allApps.partition { it.isSystem }
+            }
             _uiState.update {
                 it.copy(
                     userApps = userApps,
                     systemApps = systemApps,
-                    isLoading = false
+                    isLoading = false,
+                    isRefreshing = false
                 )
             }
         }
     }
 
     fun refreshApps() {
+        _uiState.update { it.copy(isRefreshing = true) }
         loadApps()
     }
 

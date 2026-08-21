@@ -58,10 +58,8 @@ class SettingsViewModel(
     private val permissionManager: PermissionManager,
     private val logcatCapture: LogcatCapture,
     private val themeManager: ThemeManager,
-    filesDir: File,
+    private val logsDir: File,
 ) : ViewModel() {
-
-    private val logsDir = File(filesDir, "logs")
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()

@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import com.valhalla.loki.R
 import com.valhalla.loki.model.AppInfo
 import com.valhalla.loki.model.LogcatCapture
+import com.valhalla.loki.model.logsDir
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -103,7 +104,7 @@ class LogcatService : Service() {
             if (appToLog != null && tempLogFile != null && tempLogFile.exists()) {
                 try {
                     // Define the permanent storage location
-                    val destinationDir = File(filesDir, "logs/${appToLog.packageName}")
+                    val destinationDir = File(logsDir, appToLog.packageName)
                     if (!destinationDir.exists()) {
                         destinationDir.mkdirs()
                     }
