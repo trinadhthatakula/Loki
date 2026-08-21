@@ -11,7 +11,6 @@ import androidx.lifecycle.viewModelScope
 import com.valhalla.loki.model.AppInfo
 import com.valhalla.loki.model.AppInfoGrabber
 import com.valhalla.loki.model.PermissionManager
-import com.valhalla.loki.model.rootAvailable
 import com.valhalla.loki.services.LogcatService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -43,7 +42,8 @@ data class AppListUiState(
 )
 
 class AppListViewModel(
-    private val grabber: AppInfoGrabber
+    private val grabber: AppInfoGrabber,
+    private val permissionManager: PermissionManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AppListUiState())
@@ -76,11 +76,10 @@ class AppListViewModel(
 
     fun checkRootAccess() {
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    hasRootAccess = rootAvailable()
-                )
-            }
+            // Resolve before update {}: isRootAvailable() suspends, and the update block must
+            // stay a pure, non-suspending transform.
+            val hasRoot = permissionManager.isRootAvailable()
+            _uiState.update { it.copy(hasRootAccess = hasRoot) }
         }
     }
 
@@ -150,7 +149,7 @@ class AppListViewModel(
     }
 
     fun handleAppClick(context: Context, appInfo: AppInfo, requestPermission: (String) -> Unit) {
-        if (_uiState.value.hasRootAccess || PermissionManager.hasReadLogsPermission(context)) {
+        if (_uiState.value.hasRootAccess || permissionManager.hasReadLogsPermission(context)) {
             if (_uiState.value.isLoggerRunning) {
                 // Already logging, show toast (handled in UI)
                 return

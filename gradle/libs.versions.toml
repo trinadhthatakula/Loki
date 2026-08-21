@@ -8,9 +8,12 @@ espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
 composeBom = "2026.08.00"
-libsu = "6.0.0"
+odin = "1.0.0"
 accompanistDrawablepainter = "0.37.3"
 kotlinx-serialization-json = "1.11.0"
+# Odin exposes coroutines through `api()`, so this pin is what stops Loki from silently
+# tracking whatever version Odin happens to ship. Keep it deliberate.
+kotlinxCoroutines = "1.11.0"
 material3 = "1.5.0-alpha26"
 splashscreen = "1.2.0"
 koinAndroid = "4.2.2"
@@ -33,8 +36,11 @@ androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-toolin
 androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
-topjohnwu-libsu-core = { module = "com.github.topjohnwu.libsu:core", version.ref = "libsu" }
+#Root — Odin, the Kotlin-first coroutine root shell (replaced libsu 6.0.0)
+odin = { module = "com.trinadhthatakula:odin", version.ref = "odin" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinx-serialization-json" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 #Koin
 koin-android = { module = "io.insert-koin:koin-android", version.ref = "koinAndroid" }
 koin-androidx-compose = { module = "io.insert-koin:koin-androidx-compose", version.ref = "koinAndroid" }

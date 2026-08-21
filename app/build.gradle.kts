@@ -218,6 +218,7 @@ dependencies {
 
     /// Test
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -231,8 +232,15 @@ dependencies {
     /// Drawable Painter
     implementation(libs.accompanist.drawablepainter)
 
-    /// LibSU
-    implementation(libs.topjohnwu.libsu.core)
+    /// Root shell — Odin (published com.trinadhthatakula:odin, replaced libsu 6.0.0)
+    implementation(libs.odin)
+
+    /// Coroutines
+    // Loki imports kotlinx.coroutines all over `:app` without declaring it — until now the version
+    // arrived transitively from lifecycle/compose (1.9.0), and adding Odin would have silently
+    // bumped it to whatever Odin's `api(kotlinx-coroutines-android)` ships. Declared here so the
+    // version is Loki's decision, and so coroutines-test stays on the same one.
+    implementation(libs.kotlinx.coroutines.android)
 
     /// Koin
     implementation(libs.koin.android)

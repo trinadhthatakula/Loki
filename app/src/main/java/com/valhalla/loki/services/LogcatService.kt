@@ -11,14 +11,16 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.valhalla.loki.R
 import com.valhalla.loki.model.AppInfo
-import com.valhalla.loki.model.fetchLogs
-import com.valhalla.loki.model.stopLogger
+import com.valhalla.loki.model.LogcatCapture
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.koin.android.ext.android.inject
 import java.io.File
 
 class LogcatService : Service() {
+
+    private val logcatCapture: LogcatCapture by inject()
 
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
@@ -73,23 +75,29 @@ class LogcatService : Service() {
 
         startForeground(NOTIFICATION_ID, createNotification(appInfo.appName ?: "Unknown"))
 
-        appInfo.fetchLogs(
+        logcatCapture.start(
+            appInfo = appInfo,
             scope = serviceScope,
             outputFile = logFile,
             onExit = {
-                // This is called when the libsu job finishes or is killed
+                // Fires when the capture ends for any reason, including no privilege being
+                // available at all.
                 stopLogging()
             }
         )
     }
 
     private fun stopLogging() {
+        // Claim the stop. `stop()` below ends the capture, which fires onExit, which calls back
+        // in here — without this guard the log would be saved twice and the service stopped twice.
+        if (!_isRunning.compareAndSet(expect = true, update = false)) return
+
         // Get values before they are reset
         val appToLog = currentAppInfo
         val tempLogFile = _currentLogFile.value
 
         // Stop the underlying logcat process
-        stopLogger?.invoke()
+        logcatCapture.stop()
 
         // Launch a coroutine to handle file I/O without blocking
         serviceScope.launch {
@@ -118,9 +126,9 @@ class LogcatService : Service() {
                 }
             }
 
-            // Reset state and stop the service from the main thread after I/O is done
+            // Reset state and stop the service from the main thread after I/O is done.
+            // _isRunning was already cleared by the compareAndSet guard above.
             withContext(Dispatchers.Main) {
-                _isRunning.value = false
                 _currentLogFile.value = null
                 currentAppInfo = null
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -160,6 +168,9 @@ class LogcatService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        // Close the privileged shell before the scope goes away — cancelling the coroutine alone
+        // would leave a root `logcat` running with nobody reading it.
+        logcatCapture.stop()
         serviceJob.cancel()
     }
 

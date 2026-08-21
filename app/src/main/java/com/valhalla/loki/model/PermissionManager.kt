@@ -4,8 +4,9 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
-import com.topjohnwu.superuser.Shell
-import com.topjohnwu.superuser.ShellUtils
+import com.valhalla.superuser.ktx.ShellRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import moe.shizuku.server.IShizukuService
 import rikka.shizuku.Shizuku
 
@@ -15,7 +16,16 @@ enum class PermissionMethod {
     ROOT   // Indicates we are using a root shell
 }
 
-object PermissionManager {
+/**
+ * The single place that answers "what privilege does Loki actually have right now?".
+ *
+ * Root is reached through Odin's [ShellRepository]. Every root answer is therefore a
+ * `suspend` one: probing root means spawning or reusing a `su` process, which must never
+ * happen on the main thread.
+ */
+class PermissionManager(
+    private val shell: ShellRepository
+) {
 
     /**
      * Checks if the app has been granted the READ_LOGS permission directly.
@@ -29,10 +39,11 @@ object PermissionManager {
 
     /**
      * Checks if a root shell is available.
+     *
+     * Backed by Odin's bounded probe: it never throws and cannot hang forever — a shell that
+     * fails to initialise inside Odin's timeout reports `false` rather than blocking.
      */
-    fun isRootAvailable(): Boolean {
-        return ShellUtils.fastCmd("id -u") == "0"
-    }
+    suspend fun isRootAvailable(): Boolean = shell.isRootGranted()
 
     /**
      * Checks if Shizuku is installed, running, and if LOKI has been granted permission.
@@ -50,15 +61,18 @@ object PermissionManager {
      * Uses a Shizuku shell to grant the READ_LOGS permission to this app.
      * Returns true on success.
      */
-    fun grantReadLogsViaShizuku(context: Context): Boolean {
-        if (!isShizukuAvailable()) return false
-        return try {
-            val command = "pm grant ${context.packageName} android.permission.READ_LOGS"
-
-            // --- CORRECTED IMPLEMENTATION ---
-            // Get the IShizukuService binder and call newProcess on it.
+    suspend fun grantReadLogsViaShizuku(context: Context): Boolean = withContext(Dispatchers.IO) {
+        if (!isShizukuAvailable()) return@withContext false
+        try {
+            // context.packageName is our own package, so there is nothing here an attacker
+            // controls — but the command is still built as an argv list rather than a shell
+            // string so that stays true if the argument ever stops being ours.
             val service = IShizukuService.Stub.asInterface(Shizuku.getBinder())
-            val process = service.newProcess(arrayOf("sh", "-c", command), null, null)
+            val process = service.newProcess(
+                arrayOf("pm", "grant", context.packageName, Manifest.permission.READ_LOGS),
+                null,
+                null
+            )
 
             // A successful execution will have an exit code of 0.
             val exitCode = process.waitFor()
