@@ -1,0 +1,37 @@
+# Code owners for Loki. Listed owners are auto-requested for review on matching paths.
+# Docs: https://docs.github.com/articles/about-code-owners
+#
+# Every rule here names the same person, so nothing below changes WHO reviews. What it
+# changes is the review being requested automatically and, if the branch ruleset turns
+# on "Require review from Code Owners", being required. The paths are listed
+# separately from the catch-all so that the reason each one is sensitive stays written
+# down, and so a second maintainer can be added to one line without inheriting all of
+# them.
+#
+# Last match wins in this file — later rules override earlier ones, which is the
+# opposite of .gitignore. The catch-all therefore has to come first.
+
+# Default owner for everything in the repository.
+*                       @trinadhthatakula
+
+# Release-gating and CI configuration. A change here can alter what every other pull
+# request is allowed to merge, or what gets published to users, without touching a
+# line of app code.
+/.github/               @trinadhthatakula
+/gradle.properties      @trinadhthatakula
+/release-notes/         @trinadhthatakula
+/.coderabbit.yaml       @trinadhthatakula
+
+# The privileged surface. These files reach android.permission.READ_LOGS through a
+# root shell or through Shizuku's binder, so code here runs with authority the app
+# itself does not have — and a command assembled from an untrusted string is a shell
+# injection into that authority. See CONTRIBUTING.md and .github/SECURITY.md.
+/app/src/main/java/com/valhalla/loki/model/SuCli.kt              @trinadhthatakula
+/app/src/main/java/com/valhalla/loki/model/PermissionManager.kt   @trinadhthatakula
+/app/src/main/java/com/valhalla/loki/services/                    @trinadhthatakula
+/app/src/main/AndroidManifest.xml                                 @trinadhthatakula
+
+# Signing and shrinking. proguard-rules.pro decides what survives R8 in the APK that
+# ships, and app/build.gradle.kts holds the signing config and the version derivation.
+/app/build.gradle.kts   @trinadhthatakula
+/app/proguard-rules.pro @trinadhthatakula

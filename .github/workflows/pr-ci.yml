@@ -1,0 +1,272 @@
+name: PR CI
+
+# This workflow has no `paths` / `paths-ignore` filter at any level, and must never
+# gain one. `build-and-test` below is the required status context on both the dev and
+# the master ruleset, `on.pull_request.paths` filters the WHOLE workflow, and GitHub
+# reports a path-skipped required check as "Expected — Waiting for status" for as long
+# as the PR is open. A docs-only PR would therefore become unmergeable with nothing in
+# the UI explaining why.
+#
+# The cost is real and will keep inviting the change: a PR that only touches a README
+# still pays the Android build, unit tests, lint and R8 below. Minutes of CI are
+# cheaper than a PR that cannot merge. The two release callers (1-dev-publish.yml and
+# 2-master-release.yml) DO filter — both are safe to filter precisely because neither
+# is a required check.
+#
+# No `branches:` filter either, and for the same reason one level up: a filter here
+# does not make a PR unchecked-and-obviously-so, it makes it unchecked-and-GREEN.
+# `pull_request.branches` matches the BASE, so a stacked PR — one opened against a
+# feature branch, which is how a dependent change is reviewed without waiting for its
+# parent — would run none of the jobs below and show nothing to distinguish it from a
+# PR where everything ran and passed.
+#
+# `edited` is in the types for the other half of the same problem. Changing a PR's
+# base raises `pull_request` with action `edited`, and the default types are
+# opened/synchronize/reopened — so a retarget fires nothing. The stale result is not
+# merely stale, it is wrong: the checkouts below pass no `ref:`, so actions/checkout
+# uses its default of refs/pull/N/merge and every job here builds HEAD MERGED INTO THE
+# BASE. Retarget the PR and the green on the page describes a merge into a branch that
+# is no longer the target.
+#
+# The obvious economy — keep `edited` but skip unless `github.event.changes.base` — is
+# deliberately NOT taken. The concurrency group below is workflow-level with
+# cancel-in-progress, and it is claimed before any job's `if` is evaluated: a body edit
+# during a real run would cancel that run, then skip, and a skipped required check
+# counts as a PASS to the ruleset. That is a false green, which is the exact defect
+# this shape exists to avoid. Rerunning on a body edit only wastes minutes.
+#
+# Fork PRs need no extra thought here — see the `Assemble minified release` step below.
+# This workflow exports no secret, and the release build type only assigns a
+# signingConfig when credentials exist, so a fork PR and a branch PR produce the same
+# unsigned APK.
+on:
+  pull_request:
+    # The three defaults, restated because naming any type replaces the default
+    # set rather than extending it, plus `edited` for the base-change case above.
+    types: [ opened, synchronize, reopened, edited ]
+
+# Least-privilege token — this workflow only reads the repo.
+permissions:
+  contents: read
+
+# Cancel superseded runs for the same PR.
+concurrency:
+  group: pr-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      # persist-credentials: false on every checkout in this file. The action
+      # defaults it to TRUE, which leaves the job's token in the git config for
+      # everything that runs afterwards — here, an Android build that executes
+      # thousands of lines of third-party Gradle and R8 plugin code on a PR from
+      # a branch anyone with write access can push. Nothing in this workflow
+      # performs an authenticated git operation, so the credential is pure
+      # exposure. It is read-only, which limits the blast radius; it does not
+      # make leaving it lying around free.
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v5.7.0
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # :app:compileDebugAndroidTestKotlin is not decoration. Nothing else in this
+      # repo compiles app/src/androidTest at all: assembleDebug builds main, the
+      # unit-test task builds test/, lint analyses neither, and connectedAndroidTest —
+      # the task that WOULD compile it — needs a device and never runs here. So
+      # instrumented tests could be merged with a syntax error, a missing import or a
+      # reference to a symbol that was renamed three PRs ago, and every check on the
+      # page would still be green.
+      #
+      # Compile-only, deliberately. Running the tests needs an emulator, which is
+      # minutes and a flake source; compiling them costs one extra Kotlin task against
+      # classes this step has already built. It buys the guarantee that androidTest
+      # still refers to code that exists, which is the failure mode that actually
+      # happens when a refactor sweeps main/ and leaves androidTest/ behind.
+      - name: Assemble + unit test + androidTest compile (debug)
+        run: >
+          ./gradlew assembleDebug testDebugUnitTest
+          :app:compileDebugAndroidTestKotlin --stacktrace
+
+      # A step of build-and-test rather than a job of its own, deliberately.
+      # "build-and-test" is the only context the rulesets require; a separate lint job
+      # would show up green-or-red on the PR but merge would not wait for it until
+      # someone also edited the ruleset. Inside this job it is required the moment this
+      # file merges.
+      #
+      # lintRelease, not lintDebug: the release build type is where the strict
+      # detectors live, and it is the variant that ships. A debug-variant lint pass
+      # says very little about what users install.
+      #
+      # NOT warningsAsErrors, unlike Thor. Thor's :app is at 0 errors / 0 warnings, so
+      # it can afford to make a warning fatal; Loki has no such baseline and switching
+      # it on here would redden every PR for debt none of their authors introduced.
+      # Lint's own abortOnError still fails the build on an ERROR-severity finding,
+      # which is the floor worth having today. Turning warnings fatal is a follow-up
+      # that starts by getting to zero, not by flipping the flag.
+      - name: Android Lint (release)
+        id: lint
+        run: ./gradlew lintRelease --stacktrace
+
+      # The text report lands in the job log, but the HTML report carries the source
+      # snippet and the explanation for each issue. Attach it so a red check is
+      # diagnosable from the PR instead of requiring a local repro.
+      - name: Upload lint report
+        if: failure() && steps.lint.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: lint-results-release
+          path: |
+            app/build/reports/lint-results-release.html
+            app/build/reports/lint-results-release.xml
+            app/build/reports/lint-results-release.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      # The only place R8 runs BEFORE a merge. It does run elsewhere —
+      # release-rung.yml and manual-build.yml both assemble release — but every one of
+      # those triggers on a push to an already-merged branch. On the PR itself nothing
+      # minified was ever built: assembleDebug above does not minify, lintRelease
+      # analyses unminified classes, and codeql.yml builds with `build-mode: none`. So
+      # the first minified build of any change would be the build that published it,
+      # and a shrinker break would be discovered by the release rather than by review.
+      #
+      # That matters more here than in most projects. gradle.properties sets
+      # android.enableR8.fullMode AND android.r8.strictFullModeForKeepRules, which is
+      # exactly the configuration where a keep that used to be implied quietly stops
+      # being one — and Loki reaches Shizuku's and libsu's APIs through code paths R8
+      # cannot always see statically.
+      #
+      # Needs no secrets: the release build type assigns signingConfig only when
+      # jks.properties or a non-blank KEY_ALIAS exists (`hasSigningCredentials` in
+      # app/build.gradle.kts, which exists so a fresh clone can still build), so this
+      # produces an unsigned release APK rather than dying in validateSigningRelease.
+      - name: Assemble minified release (R8)
+        id: r8
+        run: ./gradlew assembleRelease --stacktrace
+
+      # R8 writes missing_rules.txt into the mapping directory when it cannot resolve a
+      # class something references, and the contents are the rules it wants. AGP fails
+      # the build in the same breath today, so this is a second lock rather than the
+      # only one — but it is the lock that survives the first being relaxed (a blanket
+      # -dontwarn added to quiet the symptom, or a future AGP demoting missing classes
+      # to a warning), and it names the file in the log instead of leaving it to be
+      # found inside an artifact.
+      - name: Check R8 missing rules
+        id: missing_rules
+        # Runs even when the assemble failed, because if R8 is what failed then this is
+        # the step that says so. Skipped along with the assemble if an earlier step
+        # went red.
+        if: ${{ !cancelled() && steps.r8.outcome != 'skipped' }}
+        run: |
+          missing=0
+          for rules in app/build/outputs/mapping/*/missing_rules.txt; do
+            [ -f "$rules" ] || continue
+            missing=1
+            echo "::error::R8 could not resolve every class the code references. The fix is on the classpath, not in the keep rules: add the dependency that supplies the class, or correct its scope (a compileOnly that should be implementation). A -keep cannot help here — it preserves a class R8 can already see, it does not supply one it cannot. $rules holds the -dontwarn rules R8 suggests so the build can proceed regardless; those silence the diagnostic rather than fix it, so add them to app/proguard-rules.pro only once you have established the class is genuinely absent at runtime too. If that code path does run, -dontwarn buys a ClassNotFoundException instead of a build failure."
+            cat "$rules"
+          done
+          exit "$missing"
+
+      # configuration.txt is the fully merged rule set, every consumer rule from every
+      # dependency included, and usage.txt is what R8 removed — between them a shrinker
+      # failure is readable from the PR without rerunning the build locally.
+      # Failure-only, like the lint report above: on a green run the APK is unsigned and
+      # thrown away, and its mapping.txt describes nothing that will ever ship.
+      - name: Upload R8 outputs
+        if: failure() && steps.r8.outcome != 'skipped'
+        uses: actions/upload-artifact@v7
+        with:
+          name: r8-outputs
+          path: app/build/outputs/mapping/
+          if-no-files-found: warn
+          retention-days: 14
+
+  static-analysis:
+    name: static-analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Pinned by version AND checksum. `bash <(curl ...)`, which the upstream
+      # README suggests, executes whatever the URL serves at that moment.
+      #
+      # Verify locally with THIS version, not with whatever Homebrew installed.
+      # actionlint hands each `run:` block to shellcheck, and how it synthesises
+      # the `env:` block into that script changed after 1.7.7: 1.7.12 declares
+      # the env vars, 1.7.7 does not, so 1.7.7 alone raises SC2153 on a name
+      # that merely resembles a local variable. A newer local actionlint is a
+      # green run that proves nothing about this job.
+      #
+      #   curl -sSLo - https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_darwin_arm64.tar.gz \
+      #     | tar -xz actionlint && ./actionlint
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.7
+          ACTIONLINT_SHA256: 023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757
+        run: |
+          set -euo pipefail
+          url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl --fail --silent --show-error --location -o actionlint.tar.gz "$url"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum --check --strict
+          tar -xzf actionlint.tar.gz actionlint
+          chmod +x actionlint
+
+      - name: Lint workflows
+        run: ./actionlint -color
+
+      # Pinned, not the preinstalled one. ubuntu-latest ships 0.9.0, Homebrew
+      # ships 0.11.0, and they disagree about which code a finding gets — 0.9
+      # reports an uncalled function as SC2317, 0.10 renamed it SC2329. A
+      # `disable=` directive naming one of them passes locally and fails here.
+      # Worse, the runner image can bump under us with no commit to blame.
+      #
+      # 0.11.0 has a darwin.aarch64 build, so a contributor's `brew install
+      # shellcheck` is the same binary this job runs.
+      - name: Install shellcheck
+        env:
+          SHELLCHECK_VERSION: 0.11.0
+          SHELLCHECK_SHA256: b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6
+        run: |
+          set -euo pipefail
+          url="https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.gz"
+          curl --fail --silent --show-error --location -o shellcheck.tar.gz "$url"
+          echo "${SHELLCHECK_SHA256}  shellcheck.tar.gz" | sha256sum --check --strict
+          tar -xzf shellcheck.tar.gz "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+          mv "shellcheck-v${SHELLCHECK_VERSION}/shellcheck" ./shellcheck
+          chmod +x shellcheck
+
+      - name: Lint shell scripts
+        run: |
+          set -euo pipefail
+          ./shellcheck --version
+          # -x follows `source`d files; -S style is the strictest useful level.
+          find .github/scripts -name '*.sh' -print0 | xargs -0 ./shellcheck -x -S style
+
+      - name: Run shell script tests
+        run: .github/scripts/test/run-tests.sh
+
+      # Cheap, and it closes the one gap the tests above cannot: a release whose
+      # store changelog never reached the fastlane tree. --check writes nothing.
+      # It is vacuously green while a version has no curated notes, which is the
+      # normal state between releases.
+      - name: Check fastlane changelog parity
+        run: |
+          set -euo pipefail
+          name="$(.github/scripts/detect-version-bump.sh HEAD | sed -n 's/^name=//p')"
+          .github/scripts/sync-changelog-locales.sh --check "$name"

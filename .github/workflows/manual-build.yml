@@ -1,0 +1,179 @@
+name: Manual build (publishes nothing)
+
+# Build an APK from any branch or tag, on demand, and attach it to the run as an
+# artifact. Nothing is tagged, nothing is released, nothing is pushed.
+#
+# What it is for:
+#   - handing someone a build of a branch to try before it merges
+#   - reproducing a release build locally-equivalent, without cutting a release
+#   - confirming that R8 survives a change without waiting for a merge to dev
+#
+# What it is NOT: a release path. The two release rungs (1-dev-publish.yml and
+# 2-master-release.yml) are the only workflows that create a tag or a release, and
+# this one holds `contents: read` so it cannot become one by accident.
+#
+# Thor's equivalent runs fastlane against a Play service account and builds both
+# product flavours. Loki has neither — no Play pipeline (see release-rung.yml for
+# why) and a single unflavoured variant — so this is plain Gradle.
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'Which build type to assemble.'
+        required: true
+        default: release
+        type: choice
+        options:
+          - release
+          - debug
+
+# Read-only. This workflow must never gain the ability to publish; that is what
+# the release rungs are for, and they are the files reviewers know to watch.
+permissions:
+  contents: read
+
+# Not cancel-in-progress. Two hand-triggered builds are two things somebody asked
+# for, and there is no "superseded" relationship between them the way there is
+# between two pushes to the same PR.
+concurrency:
+  group: manual-build-${{ github.ref }}-${{ inputs.variant }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ inputs.variant }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          # This job decodes the signing keystore below, so the token is dropped
+          # from the git config for the same reason as in pr-ci.yml: nothing here
+          # performs an authenticated git operation, so leaving it behind while
+          # third-party Gradle and R8 plugin code runs is exposure with no upside.
+          persist-credentials: false
+
+      # No dependency cache, for the reason spelled out at length in
+      # release-rung.yml: this job decodes the release keystore, and a restored
+      # cache is mutable state written by an earlier run that decides which jars
+      # Gradle compiles against. Manual builds are rare enough that the cold-build
+      # cost is not worth reasoning about the interaction.
+      - name: Setup JDK 21
+        uses: actions/setup-java@v5.7.0
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # Only meaningful for the release variant. The debug build type has its own
+      # signing config — the AOSP debug key, which AGP generates locally — so a
+      # debug build is installable with no secrets at all. That is what makes this
+      # workflow useful from a fork or before the signing secrets exist.
+      - name: Decode keystore
+        id: keystore
+        if: inputs.variant == 'release'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set — this build will produce an UNSIGNED release APK, which Android will refuse to install. Build the debug variant instead if you need something installable, or add the four signing secrets."
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/release.jks
+          # base64 --decode exits 0 on empty input, so the redirect cannot report a
+          # truncated secret. Check the file.
+          if [ ! -s app/release.jks ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is set but decoded to nothing — the signing keystore is empty." >&2
+            exit 1
+          fi
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      # The version name is only used to name the artifact, so it is read the same
+      # way the release rungs read it — through the one script that owns the
+      # arithmetic. Duplicating the sums here is how a build artifact ends up
+      # labelled with a version that does not match the APK inside it.
+      - name: Read the version
+        id: ver
+        run: .github/scripts/detect-version-bump.sh HEAD >> "$GITHUB_OUTPUT"
+
+      # The keystore env vars are passed only when the decode actually succeeded.
+      # `${{ secrets.X }}` expands to the empty string for a secret that does not
+      # exist, and a present-but-blank KEY_ALIAS makes app/build.gradle.kts assign a
+      # signingConfig it cannot use — which dies in validateSigningRelease instead
+      # of falling back to unsigned. Same guard as release-rung.yml.
+      - name: Assemble
+        env:
+          VARIANT: ${{ inputs.variant }}
+          KEY_ALIAS: ${{ steps.keystore.outputs.signed == 'true' && secrets.KEY_ALIAS || '' }}
+          KEY_PASSWORD: ${{ steps.keystore.outputs.signed == 'true' && secrets.KEY_PASSWORD || '' }}
+          KEYSTORE_PASSWORD: ${{ steps.keystore.outputs.signed == 'true' && secrets.KEYSTORE_PASSWORD || '' }}
+          KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
+        run: |
+          set -euo pipefail
+          case "$VARIANT" in
+            release) ./gradlew assembleRelease --stacktrace ;;
+            debug)   ./gradlew assembleDebug   --stacktrace ;;
+            *)
+              echo "::error::Unknown variant '$VARIANT'." >&2
+              exit 2
+              ;;
+          esac
+
+      # Named after the version and the commit, not after the build directory. A
+      # downloaded manual build is worth exactly as much as the ability to say which
+      # tree produced it, and `app-release.apk` says nothing.
+      #
+      # The -unsigned suffix AGP puts on the filename is carried into the artifact
+      # name for the same reason release-rung.yml carries it into the asset name:
+      # somebody should be able to see the APK will not install before they try.
+      - name: Collect the APK
+        id: apk
+        env:
+          NAME: ${{ steps.ver.outputs.name }}
+          VARIANT: ${{ inputs.variant }}
+        run: |
+          set -euo pipefail
+          # `|| true` keeps the friendly error below reachable — the default shell is
+          # `bash -e -o pipefail`, so a missing directory would otherwise kill the
+          # step at the assignment.
+          src="$(find "app/build/outputs/apk/${VARIANT}" -name '*.apk' 2>/dev/null | sort | head -n 1 || true)"
+          if [ -z "$src" ] || [ ! -f "$src" ]; then
+            echo "::error::No APK under app/build/outputs/apk/${VARIANT}/ — the build did not produce one." >&2
+            exit 1
+          fi
+
+          mkdir -p dist
+          suffix=""
+          case "$src" in *-unsigned.apk) suffix="-unsigned" ;; esac
+          dest="dist/Loki-v${NAME}-${VARIANT}${suffix}-${GITHUB_SHA:0:7}.apk"
+          cp "$src" "$dest"
+          echo "path=$dest" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$dest" .apk)" >> "$GITHUB_OUTPUT"
+          echo "  $src -> $dest"
+          # Published next to the APK so a build handed to someone out-of-band can
+          # still be checked against this run's log.
+          sha256sum "$dest" | tee "$dest.sha256"
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: |
+            ${{ steps.apk.outputs.path }}
+            ${{ steps.apk.outputs.path }}.sha256
+          if-no-files-found: error
+          # Long enough to be useful for a review cycle, short enough that ad-hoc
+          # builds do not accumulate. Releases are the durable artefact.
+          retention-days: 14
+
+      # --- SECURITY CLEANUP ---
+      #
+      # always(), so a failed build does not leave the decoded keystore in the
+      # workspace for whatever runs on this runner next.
+      - name: Cleanup sensitive files
+        if: always()
+        run: rm -f app/release.jks

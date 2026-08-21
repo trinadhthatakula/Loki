@@ -1,0 +1,43 @@
+Loki is a logcat reader for Android. Pick an installed app, start a capture, and Loki collects that application's log output until you stop it — then saves it to a text file you can read, keep or share.
+
+It is built for the moment when something misbehaves and you need to know why: a crash you can't reproduce, a network call that silently fails, an app that drains the battery overnight.
+
+<b>What it does</b>
+
+• Pick any installed app and capture its logcat output
+• Watch the log live in a terminal-style view while it runs
+• Save a capture to a text file
+• Share a saved log straight from the app
+• Browse and manage everything you've saved
+
+<b>What you need</b>
+
+Loki reads <i>other</i> applications' logs, which needs android.permission.READ_LOGS. Android classifies that as signature|privileged: no app can ask you for it, and you cannot grant it. That restriction has been in place since Android 4.1, deliberately — a log stream carries other apps' secrets.
+
+So Loki borrows the privilege instead, one of two ways:
+
+• <b>Root</b> — Magisk, KernelSU or APatch. Loki runs its capture through a root shell.
+• <b>Shizuku</b> — no root required. Pair Shizuku over wireless debugging or ADB, and Loki uses it until you reboot.
+
+Loki's onboarding will walk you through whichever you have. With neither, Loki can only read its own logs, which is not useful.
+
+Android 7.0 (API 24) or newer.
+
+<b>About your logs</b>
+
+Logcat is not a tidy record of one app's thoughts. It carries access tokens, URLs, account names, file paths, and data belonging to other people who use your device.
+
+Loki never sends a capture anywhere. Files stay in Loki's own storage until you choose to share one. But once you share it — in a bug report, a chat, an issue tracker — it is out of your hands. Read a log before you post it.
+
+<b>Free software</b>
+
+Loki is free and open source under GPL-3.0-or-later. No ads, no trackers, no analytics, no account.
+
+The complete source, the issue tracker and every release are at:
+https://github.com/trinadhthatakula/Loki
+
+<b>Still early</b>
+
+Loki works, but it is young, and it says so. Expect rough edges. Bug reports are genuinely welcome — and the two most useful things you can put in one are your privilege mode (root or Shizuku) and your Loki version.
+
+Where it's heading: live monitoring, and eventually crash detection.

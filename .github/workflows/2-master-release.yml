@@ -1,0 +1,50 @@
+name: 2. Master — publish stable release
+
+# Rung 2 of 2, and the top of the ladder. Builds from `master` and cuts the ONLY
+# release that is not marked pre-release — the tag Obtainium and IzzyOnDroid
+# resolve.
+#
+# Two things differ from the dev rung, and both are because this one reaches
+# users: notes are required, and an unbumped versionCode is an error rather than
+# a no-op. See docs/branching-and-releases.md.
+on:
+  push:
+    branches: [ "master" ]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - 'fastlane/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.github/**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/labeler.yml'
+      - '.github/CODEOWNERS'
+      - '.github/FUNDING.yml'
+      - '.github/dependabot.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: release-master
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: ./.github/workflows/release-rung.yml
+    permissions:
+      contents: write
+    secrets: inherit
+    with:
+      rung: master
+      # Empty, deliberately. Obtainium and IzzyOnDroid resolve the unsuffixed
+      # v<name> tag; a suffix here would leave them pointing at nothing.
+      tag_suffix: ''
+      title_prefix: Loki
+      prerelease: false
+      # The one rung that reaches users gets no commit-log fallback. A missing
+      # or oversized notes file fails BEFORE the build — nothing is published.
+      require_notes: true
+      # There is nothing to release if the version has not changed, and the tag
+      # this run would cut already exists. Fail loudly rather than no-op, so a
+      # promotion that forgot the bump is visible.
+      on_unchanged_version: fail

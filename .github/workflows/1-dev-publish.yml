@@ -1,0 +1,54 @@
+name: 1. Dev — publish pre-release
+
+# Rung 1 of 2. Builds the merged tree and publishes a GitHub pre-release.
+# Rung 2 (2-master-release.yml) cuts the stable from `master`.
+#
+# See docs/branching-and-releases.md for the ladder as a whole.
+on:
+  push:
+    branches: [ "dev" ]
+    # A change that cannot reach the APK must not spend a full release run
+    # proving it. Safe to filter the WHOLE workflow because this is not a
+    # required status check — pr-ci.yml carries that one and must never gain a
+    # filter, for reasons written at the top of it.
+    #
+    # gradle.properties and release-notes/** stay OUT of this list: a release
+    # push carries the version bump, so it is never skipped.
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - 'fastlane/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.github/**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/labeler.yml'
+      - '.github/CODEOWNERS'
+      - '.github/FUNDING.yml'
+      - '.github/dependabot.yml'
+  workflow_dispatch:
+
+# cancel-in-progress: false, unlike pr-ci.yml. Two pushes to dev in quick
+# succession are two releases, not a superseded check — cancelling the first
+# mid-publish could leave a tag with no release attached to it.
+concurrency:
+  group: release-dev
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    uses: ./.github/workflows/release-rung.yml
+    permissions:
+      contents: write
+    secrets: inherit
+    with:
+      rung: dev
+      # github.run_number, not the version code: re-running a failed publish on
+      # the same commit mints a second tag rather than colliding with the first.
+      tag_suffix: -dev-${{ github.run_number }}
+      title_prefix: Dev Build
+      prerelease: true
+      # Notes are optional here. A dev build falls back to the commit log; the
+      # curated notes are written once, for the stable.
+      require_notes: false
+      on_unchanged_version: skip

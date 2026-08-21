@@ -1,0 +1,41 @@
+name: PR Labeler
+
+# Applies `area:` / `mode:` labels to a PR based on which files it touches. The
+# rules live in .github/labeler.yml — this file only runs them.
+#
+# pull_request_target, not pull_request, because labelling needs write access to the
+# pull request and the token on a `pull_request` run from a fork is read-only. The
+# tradeoff is the one that makes pull_request_target dangerous in general: the
+# workflow runs with a WRITE token in the context of the BASE repository, so if it
+# ever checked out and executed the PR's code, a fork could run arbitrary code with
+# that token.
+#
+# This workflow does not check the code out at all. There is no actions/checkout
+# step below, and there must never be one: actions/labeler reads its config from the
+# base repository through the API. If a future change needs the tree, it needs a
+# different trigger — not a checkout here.
+on:
+  pull_request_target:
+    # Deliberately without `edited`, unlike pr-ci.yml and codeql.yml. Those two
+    # produce a status that would be WRONG after a base change; a label is not a
+    # status, nothing gates on it, and `synchronize` already covers the case that
+    # matters — the file list changing.
+    types: [ opened, synchronize, reopened ]
+
+permissions:
+  # Read is enough: the config is fetched via the API, not checked out.
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@v7
+        with:
+          # false, so the action only ADDS labels. With sync-labels: true it also
+          # removes any label its rules did not match on this run — which would
+          # strip `priority: high`, `confirmed` and every other hand-applied label
+          # the moment a maintainer pushed one more commit. Triage a maintainer did
+          # by hand is worth more than tidiness.
+          sync-labels: false

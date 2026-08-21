@@ -13,3 +13,35 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# --- SIGNING ---
+#
+# The release signing key and its passwords. app/build.gradle.kts reads jks.properties
+# when it exists and falls back to environment variables in CI, so a fresh clone builds
+# unsigned rather than failing — which means nothing here needs to be committed for the
+# project to work, and committing any of it would hand over the ability to publish an
+# APK Android accepts as an update to a real user's install.
+#
+# *.jks is the backstop for the several names a keystore gets given by accident.
+jks.properties
+release.jks
+*.jks
+*.keystore
+google-play-api.json
+
+# --- BUILD OUTPUTS ---
+#
+# /build is already ignored above, but AGP also writes the copy-to-release-directory
+# output here when a release build runs locally, and the repository currently has an
+# APK, its output-metadata.json and a baseline profile committed under this path from
+# before it was ignored. Those are build products: they cannot be reviewed, they go
+# stale silently, and a checked-in APK invites someone to install a build nobody can
+# trace to a commit. Releases are the place for an APK.
+#
+# NOTE: those existing files are still TRACKED. A .gitignore entry does not untrack
+# anything, so this rule only stops NEW ones appearing. Removing them is a separate,
+# deliberate commit — `git rm -r --cached app/release/` — left out of this change so
+# that deleting four files from history-going-forward is its own reviewable decision.
+/app/release/
+/app/debug/
+/dist/

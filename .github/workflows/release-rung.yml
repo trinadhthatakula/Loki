@@ -1,0 +1,359 @@
+name: Release rung
+
+# One workflow, two rungs. `dev` publishes a pre-release; `master` publishes the stable.
+# They differ only in the inputs declared below. If a behaviour needs to differ between
+# them, add an input — do not fork this file.
+#
+# Thor's equivalent also uploads to Google Play through fastlane. Loki's does not, and the
+# omission is deliberate rather than unfinished: Loki's core function needs
+# android.permission.READ_LOGS to read OTHER applications' log output, and whether Play
+# policy permits that at all is an open question. Building the publishing pipeline before
+# answering it would be building the expensive half first. See
+# docs/branching-and-releases.md#google-play--an-open-question-not-an-oversight.
+#
+# What that removes is the entire Play surface: no fastlane, no Ruby, no service-account
+# key, no track inputs, no promote lanes. Gradle assembles, the release step publishes.
+on:
+  workflow_call:
+    inputs:
+      rung:
+        description: 'dev | master. Labels and log lines only.'
+        required: true
+        type: string
+      tag_suffix:
+        description: >-
+          Appended to v<version-name>. Empty for the stable, since that is the tag
+          Obtainium and IzzyOnDroid resolve.
+        required: true
+        type: string
+      title_prefix:
+        description: 'GitHub release title prefix.'
+        required: true
+        type: string
+      prerelease:
+        required: true
+        type: boolean
+      require_notes:
+        description: >-
+          Hard-fail, pre-flight, when any curated notes file this rung consumes is
+          missing — not merely the directory. Also removes the commit-log fallback from
+          the rung entirely.
+        required: true
+        type: boolean
+      on_unchanged_version:
+        description: "skip | fail. What an unbumped versionCode means here."
+        required: true
+        type: string
+    outputs:
+      published:
+        value: ${{ jobs.rung.outputs.published }}
+      version_name:
+        value: ${{ jobs.rung.outputs.version_name }}
+      version_code:
+        value: ${{ jobs.rung.outputs.version_code }}
+
+jobs:
+  rung:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      published: ${{ steps.gate.outputs.publish }}
+      version_name: ${{ steps.ver.outputs.name }}
+      version_code: ${{ steps.ver.outputs.code }}
+
+    steps:
+      # fetch-depth: 0 for full history and tags, which the release-notes commit-log
+      # fallback needs (`git describe --tags`). persist-credentials is left at its default
+      # here, unlike pr-ci.yml: this job legitimately holds `contents: write` for the
+      # release step, so removing the credential from the git config buys nothing.
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # The all-zero SHA is deliberate, not a placeholder. github.event.before is empty on
+      # a workflow_dispatch, and the obvious default — HEAD^ — is a perfectly readable ref
+      # under fetch-depth: 0, so the script would compare against it and report
+      # changed=false for a re-run. That breaks the escape hatch in precisely the case it
+      # exists for: a publish that failed after the build, a commit that does not bump the
+      # code landing on the branch, and an operator re-running by hand. Substituting a ref
+      # nothing can resolve routes the run into detect-version-bump.sh's fail-open branch,
+      # which reports changed=true when it cannot read the old code.
+      #
+      # The genuine all-zero case — the first push to a new branch — already reaches the
+      # same branch on its own: `before` is non-empty zeros, so :- does not fire, git show
+      # fails, and old_code comes back empty.
+      - name: Detect version bump
+        id: ver
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: .github/scripts/detect-version-bump.sh "${BEFORE:-0000000000000000000000000000000000000000}" >> "$GITHUB_OUTPUT"
+
+      # A rung decides for itself what an unbumped code means. `dev` treats it as "nothing
+      # to publish, build for verification only". `master` treats it as an error: the
+      # version has already shipped, so there is nothing to release, and the tag it would
+      # cut already exists.
+      - name: Decide whether this run publishes
+        id: gate
+        env:
+          CHANGED: ${{ steps.ver.outputs.changed }}
+          ON_UNCHANGED: ${{ inputs.on_unchanged_version }}
+          RUNG: ${{ inputs.rung }}
+          CODE: ${{ steps.ver.outputs.code }}
+        run: |
+          if [ "$CHANGED" = "true" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$ON_UNCHANGED" = "fail" ]; then
+            echo "::error::versionCode is still ${CODE}, which has already been released — there is nothing for the ${RUNG} rung to publish. Land a chore(release) bump first, or re-run via workflow_dispatch if you know ${CODE} never reached a release." >&2
+            exit 1
+          fi
+
+          echo "::notice::versionCode unchanged at ${CODE} — building for verification only, not publishing."
+          echo "publish=false" >> "$GITHUB_OUTPUT"
+
+      # Pre-flight, before anything is built or published. Bolting this next to the release
+      # step would fail after the tag had been pushed.
+      #
+      # require_notes means every curated file THIS rung consumes must exist, not merely
+      # that the directory does. A directory holding only playstore.txt would otherwise
+      # pass, and the run would then publish a raw git log as the release body of the one
+      # release users actually install.
+      #
+      # The list is per rung because the consumers are:
+      #   github.md     -> the GitHub release body (Prepare release notes below)
+      #   playstore.txt -> the store changelog under fastlane/metadata
+      # A gate on a file the rung never reads can only ever fire falsely.
+      - name: Check release-notes budget
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          NAME: ${{ steps.ver.outputs.name }}
+          REQUIRE_NOTES: ${{ inputs.require_notes }}
+        run: |
+          if [ ! -d "release-notes/v${NAME}" ] && [ ! -d "release-notes/${NAME}" ]; then
+            if [ "$REQUIRE_NOTES" = "true" ]; then
+              echo "::error::v${NAME} publishes to users and has no release-notes directory. Curated notes are required on this rung — see release-notes/README.md." >&2
+              exit 1
+            fi
+            echo "::notice::No curated notes for v${NAME} — the GitHub body will fall back to the commit log."
+            exit 0
+          fi
+
+          REQUIRED=()
+          if [ "$REQUIRE_NOTES" = "true" ]; then
+            REQUIRED+=(--require github.md --require playstore.txt)
+          fi
+
+          .github/scripts/check-notes-budget.sh "${REQUIRED[@]}" "$NAME"
+
+      # No dependency cache in this job, unlike pr-ci.yml. This is the only job in the
+      # repository that holds the signing keystore and `contents: write` at the same time,
+      # and a restored cache is mutable state written by an earlier run — the entry that
+      # decides which jars Gradle compiles against. Every other input here is pinned;
+      # a cache is the one that is not.
+      #
+      # It also buys reproducibility. An IzzyOnDroid-style rebuilder builds at the tag from
+      # a cold checkout and compares the result to what this job published, so the closer
+      # this job is to a cold build, the fewer ways the two can differ.
+      - name: Setup JDK 21
+        uses: actions/setup-java@v5.7.0
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      # --- SIGNING ---
+      #
+      # Absent secrets are tolerated on purpose. Loki has no keystore in the repository
+      # secrets yet, and a rung that cannot run until one exists is a ladder that cannot be
+      # tested. app/build.gradle.kts assigns a signingConfig only when credentials are
+      # actually present (`hasSigningCredentials`), so this decodes when it can and
+      # publishes an UNSIGNED APK when it cannot — loudly, in the log and in the release
+      # body, never silently.
+      #
+      # An unsigned release APK is not installable. That is the point of the warning: it is
+      # a visible, recoverable state, where a red build after the tag was cut is not.
+      - name: Decode keystore
+        id: keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set — this rung will publish an UNSIGNED APK, which cannot be installed. Add the four signing secrets (ANDROID_KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD) to fix it."
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/release.jks
+          # `base64 --decode` exits 0 on empty input, so the write itself cannot report a
+          # truncated secret. Check the result instead: otherwise a bad secret surfaces
+          # minutes later as a Gradle keystore error that names the symptom, not the cause.
+          if [ ! -s app/release.jks ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is set but decoded to nothing — the signing keystore is empty." >&2
+            exit 1
+          fi
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # Runs whether or not this run publishes: a green build of the merged tree is the
+      # point of the run even when there is nothing to release.
+      #
+      # The keystore env vars are set only when the decode succeeded. Passing them as empty
+      # strings would be worse than omitting them — `${{ secrets.X }}` on a missing secret
+      # expands to "", which System.getenv() reports as a present-but-blank value, and
+      # app/build.gradle.kts would then assign a signingConfig with an empty keyAlias and
+      # die in validateSigningRelease. `hasSigningCredentials` treats blank as absent for
+      # the same reason; this is the belt to that brace.
+      - name: Assemble release
+        env:
+          KEY_ALIAS: ${{ steps.keystore.outputs.signed == 'true' && secrets.KEY_ALIAS || '' }}
+          KEY_PASSWORD: ${{ steps.keystore.outputs.signed == 'true' && secrets.KEY_PASSWORD || '' }}
+          KEYSTORE_PASSWORD: ${{ steps.keystore.outputs.signed == 'true' && secrets.KEYSTORE_PASSWORD || '' }}
+          KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
+        run: ./gradlew assembleRelease --stacktrace
+
+      # One asset, named after the version rather than after the build directory. AGP emits
+      # app-release.apk or app-release-unsigned.apk depending on whether a signingConfig
+      # was assigned, so the name is resolved rather than assumed — and the -unsigned suffix
+      # is preserved into the asset name, because a user downloading a release should be
+      # able to see that it will not install before they try.
+      - name: Collect the APK
+        id: apk
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          NAME: ${{ steps.ver.outputs.name }}
+        run: |
+          set -euo pipefail
+          # `|| true` is what makes the guard below reachable: the default shell is
+          # `bash -e -o pipefail`, so a missing directory would kill the step at the
+          # assignment and never reach the friendly message.
+          src="$(find app/build/outputs/apk/release -name '*.apk' 2>/dev/null | sort | head -n 1 || true)"
+          if [ -z "$src" ] || [ ! -f "$src" ]; then
+            echo "::error::No APK under app/build/outputs/apk/release/ — the build did not produce one." >&2
+            exit 1
+          fi
+
+          mkdir -p dist
+          case "$src" in
+            *-unsigned.apk) dest="dist/Loki-v${NAME}-unsigned.apk" ;;
+            *)              dest="dist/Loki-v${NAME}.apk" ;;
+          esac
+          cp "$src" "$dest"
+          echo "path=$dest" >> "$GITHUB_OUTPUT"
+          echo "  $src -> $dest"
+          sha256sum "$dest" | tee "$dest.sha256"
+
+      - name: Prepare release notes
+        id: prep_notes
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          VERSION_NAME: ${{ steps.ver.outputs.name }}
+          REQUIRE_NOTES: ${{ inputs.require_notes }}
+          SIGNED: ${{ steps.keystore.outputs.signed }}
+        run: |
+          set -euo pipefail
+          resolve() {
+            # release-notes/v<name>/ is the convention; the un-prefixed form is tolerated
+            # because check-notes-budget.sh tolerates it too.
+            if [ -f "release-notes/v${VERSION_NAME}/$1" ]; then
+              echo "release-notes/v${VERSION_NAME}/$1"
+            elif [ -f "release-notes/${VERSION_NAME}/$1" ]; then
+              echo "release-notes/${VERSION_NAME}/$1"
+            fi
+          }
+
+          notes="$(resolve github.md)"
+          body="release_body.md"
+
+          if [ -z "$notes" ]; then
+            # What makes "no commit-log fallback on this rung" true rather than
+            # aspirational. The gate above already refused to start without github.md, so
+            # reaching here with require_notes means the file vanished mid-run — impossible
+            # from a single checkout, which is why this is an assertion and not the gate.
+            # Never relax it into the fallback: a raw git log is not release notes.
+            if [ "$REQUIRE_NOTES" = "true" ]; then
+              echo "::error::github.md disappeared after the pre-flight check — refusing to publish a commit log as the release body of v${VERSION_NAME}." >&2
+              exit 1
+            fi
+            {
+              echo "### Changelog"
+              echo ""
+            } > "$body"
+            last_tag="$(git describe --tags --abbrev=0 2>/dev/null || echo "")"
+            if [ -n "$last_tag" ]; then
+              echo "Commits since ${last_tag}:" >> "$body"
+              git log "${last_tag}..HEAD" --oneline >> "$body"
+            else
+              echo "Recent commits:" >> "$body"
+              git log --oneline -n 20 >> "$body"
+            fi
+          else
+            cp "$notes" "$body"
+          fi
+
+          # Stated in the release itself, not only in the job log. An unsigned APK is not
+          # installable, and a download page that does not say so wastes the reader's time
+          # before it wastes their trust.
+          if [ "$SIGNED" != "true" ]; then
+            {
+              echo ""
+              echo "---"
+              echo ""
+              echo "> ⚠️ **This APK is UNSIGNED and cannot be installed.** It was built without"
+              echo "> signing credentials, so Android will refuse it. This is a repository"
+              echo "> configuration gap, not a property of the release."
+            } >> "$body"
+          fi
+
+          echo "body_path=$body" >> "$GITHUB_OUTPUT"
+
+      # target_commitish pins the tag to the commit that was actually built. Without it the
+      # tag is created against the branch's tip AT THE MOMENT THE API CALL LANDS, so a push
+      # arriving during the build moves the tag off the built tree. A source rebuilder
+      # clones at the tag and compares its result to the published APK, so a drifted tag is
+      # a failed reproducibility check rather than a cosmetic problem.
+      #
+      # `!cancelled()` rather than a bare `if:`, because a bare `if:` is ANDed with an
+      # implicit success(); the prep_notes guard then supplies what that would have given
+      # us. prep_notes carries its own implicit success() and runs after the build, so
+      # outcome == 'success' proves the whole chain before it — checkout, the gate, the
+      # notes budget, the JDK setup, the keystore decode, the assemble and the APK
+      # collection — succeeded. Without it a failed build would reach this step with empty
+      # outputs and cut a tagless, assetless release.
+      #
+      # `!cancelled()` rather than always(), because always() also survives cancellation —
+      # so cancelling a run mid-build would still cut a public release and tag.
+      #
+      # The ${{ }} wrapper is required, not stylistic: a YAML scalar beginning with `!` is
+      # a tag directive, so the bare form parses `&&` as an anchor.
+      - name: Create GitHub release
+        if: ${{ !cancelled() && steps.gate.outputs.publish == 'true' && steps.prep_notes.outcome == 'success' }}
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          tag_name: v${{ steps.ver.outputs.name }}${{ inputs.tag_suffix }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ inputs.title_prefix }} v${{ steps.ver.outputs.name }}
+          body_path: ${{ steps.prep_notes.outputs.body_path }}
+          files: |
+            ${{ steps.apk.outputs.path }}
+            ${{ steps.apk.outputs.path }}.sha256
+          # Defaults to false, which publishes the release with whatever assets it found —
+          # including none. An assetless stable is worse than no stable: the tag exists, so
+          # Obtainium resolves /releases/latest/ to a release with nothing to download.
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: ${{ inputs.prerelease }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- SECURITY CLEANUP ---
+      #
+      # if: always() so a failed build does not leave the decoded keystore in the workspace
+      # for whatever runs next.
+      - name: Cleanup sensitive files
+        if: always()
+        run: rm -f app/release.jks

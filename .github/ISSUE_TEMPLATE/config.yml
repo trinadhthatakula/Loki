@@ -1,0 +1,25 @@
+# true, unlike Thor's, and deliberately so.
+#
+# Thor sets this to false because it has two other doors a question can go through —
+# GitHub Discussions and a Telegram channel — so forcing everything through a
+# template costs nobody anything. Loki has neither. Discussions are disabled on this
+# repository and there is no chat, so with blank issues off, somebody with a question
+# that is not a bug and not a feature request would have no way to ask it at all.
+#
+# Flip this to false once Discussions are enabled, and add the Discussions link to
+# contact_links below at the same time — not before. The templates are still the
+# front door: they are what the "New issue" page offers first.
+blank_issues_enabled: true
+
+contact_links:
+  # Listed here specifically so that somebody who has found a security problem sees
+  # the private route BEFORE they reach the bug template. Loki runs commands through
+  # a root shell or Shizuku, so a report can be genuinely sensitive, and by the time
+  # it is in a public issue it is public permanently.
+  - name: 🔒 Report a security vulnerability (private)
+    url: https://github.com/trinadhthatakula/Loki/security/advisories/new
+    about: Do not open a public issue for a security problem. This opens a private advisory visible only to you and the maintainer.
+
+  - name: 📖 Contributing, branching & release process
+    url: https://github.com/trinadhthatakula/Loki/blob/master/CONTRIBUTING.md
+    about: How to build Loki, which branch to target, and what CI will run on your PR.

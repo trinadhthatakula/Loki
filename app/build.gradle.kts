@@ -1,9 +1,56 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.io.FileInputStream
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlinSerialization)
+}
+
+// --- SIGNING ---
+//
+// Two sources, checked in this order: a local `jks.properties` at the repo root (git-ignored), or
+// the CI environment variables the release workflow exports. Neither is required to build.
+val keystorePropertiesFile: File = rootProject.file("jks.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
+// Whether this machine can sign a release at all. Single-sourced because the `signingConfigs`
+// block and the `release` build type both need the same answer — see the comment on
+// `signingConfig` below for why the build type has to ask rather than just assign.
+//
+// Blank counts as absent, not present. `${{ secrets.KEY_ALIAS }}` expands to the EMPTY STRING
+// when the secret does not exist, so a `!= null` test would report credentials on a repository
+// that has none and then fail `validateSigningRelease` on an empty keyAlias — which is the state
+// Loki is actually in until the four signing secrets are added.
+val hasSigningCredentials: Boolean =
+    keystorePropertiesFile.exists() || !System.getenv("KEY_ALIAS").isNullOrBlank()
+
+// --- VERSIONING ---
+//
+// `versionCode` in gradle.properties is the only number a human edits. Both values below are
+// derived from it, so the APK, the git tag, the GitHub release and the release-notes directory
+// cannot disagree about what version this is.
+
+private fun resolveVersionCode(): Int =
+    providers.gradleProperty("versionCode").orNull?.toIntOrNull()
+        ?: throw GradleException(
+            "Required 'versionCode' missing or non-numeric in gradle.properties. " +
+                "It is the single source of truth for the version — see " +
+                "docs/branching-and-releases.md."
+        )
+
+// 10000 -> 1.0.0. Two digits per segment; the scheme and the reason for it are documented on
+// `versionCode` in gradle.properties. .github/scripts/detect-version-bump.sh reproduces this exact
+// arithmetic for CI, and .github/scripts/test/test-detect-version-bump.sh pins the pair together.
+private fun calculateVersionName(code: Int): String {
+    val major = code / 10000
+    val minor = (code % 10000) / 100
+    val patch = code % 100
+    return "$major.$minor.$patch"
 }
 
 kotlin {
@@ -18,17 +65,62 @@ kotlin {
 android {
 
     namespace = "com.valhalla.loki"
-    compileSdk = 36
+
+    // 37, not 36, because the Compose BOM pinned in gradle/libs.versions.toml
+    // (2026.08.00 / material3 1.5.0-alpha26) publishes AAR metadata demanding API 37 of
+    // anything that depends on it. At 36 the build died in `checkDebugAarMetadata` with 17
+    // such issues before compiling a line — so `assembleDebug` did not work on a clean
+    // checkout, and no CI check could have been green.
+    //
+    // compileSdk only widens the API surface available at compile time; `targetSdk` below
+    // stays at 36 deliberately. Raising THAT opts the app in to new runtime behaviour and
+    // needs testing, which is a separate change from making the build run at all.
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.valhalla.loki"
         minSdk = 24
         targetSdk = 36
-        versionCode = 10000
-        versionName = "1.00.00"
+
+        val code = resolveVersionCode()
+        versionCode = code
+        versionName = calculateVersionName(code)
+
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            } else if (!System.getenv("KEY_ALIAS").isNullOrBlank()) {
+                // CI (GitHub Actions) — the release workflow decodes the keystore and exports these.
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                storeFile = file(System.getenv("KEYSTORE_FILE_PATH") ?: "release.jks")
+            } else {
+                logger.lifecycle(
+                    "No jks.properties and no KEY_ALIAS in the environment — the release APK will " +
+                        "be UNSIGNED. That is the correct result for a source rebuild; signing " +
+                        "happens downstream."
+                )
+            }
+        }
+    }
+
+    // Strips the dependency-metadata blob AGP otherwise embeds in the APK. It is signed with a
+    // Google key and is not reproducible from source, so an F-Droid/IzzyOnDroid rebuild of the same
+    // commit produces a different file with it present. Kept in the bundle, where Play wants it.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = true
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -36,6 +128,13 @@ android {
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             )
+            // Assign the config only when credentials actually exist. The `release` config above
+            // leaves every field unset in the no-credentials case, and an assigned-but-empty config
+            // fails `validateSigningRelease` with "Keystore file not set for signing config
+            // release" — so a fresh clone, and anyone rebuilding from source, could not produce a
+            // release APK at all. Unsigned output is the right answer there. CI and local signing
+            // are unaffected because both satisfy the condition.
+            signingConfig = signingConfigs.getByName("release").takeIf { hasSigningCredentials }
         }
     }
     compileOptions {

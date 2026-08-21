@@ -1,0 +1,94 @@
+name: CodeQL
+
+# Static security analysis, results in the repository's Security tab.
+#
+# One language, `java-kotlin`, because that is all Loki has: an Android app and a
+# handful of shell scripts. There is no web surface, no Gradle plugin written in
+# another language, and CodeQL has no shell analyser — the scripts are covered by
+# shellcheck at style level in pr-ci.yml instead, which is the right tool for them.
+# Adding a second language here is a two-line change if that ever stops being true;
+# see the note on the matrix below.
+on:
+  # Scoped to the two long-lived branches, because this is what populates the
+  # Security tab's baseline — the set of alerts a PR is diffed against. Analysing
+  # every branch push would churn it for no gain.
+  push:
+    branches: [ "master", "dev" ]
+  # NOT scoped by base, and `edited` is in the types. Both for the reasons written
+  # out at the top of pr-ci.yml, which apply here word for word: a PR stacked on a
+  # feature branch would otherwise get no analysis at all, and a retargeted PR would
+  # keep an analysis of a merge into a branch that is no longer its base. Naming any
+  # type replaces the default set rather than extending it, so the three defaults
+  # are restated.
+  pull_request:
+    types: [ opened, synchronize, reopened, edited ]
+  # The weekly run is not redundant with the two above. CodeQL's query packs are
+  # updated continuously, so a scheduled analysis finds newly-published queries
+  # against code that has not changed — which is most of the code, most of the time.
+  # Off-hours and off-the-hour, to avoid the top-of-hour scheduling backlog that
+  # makes cron runs on GitHub start late.
+  schedule:
+    - cron: '41 3 * * 1' # weekly, Monday 03:41 UTC
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      # The one permission that matters here: without it the analysis runs and then
+      # fails to upload, which reads as a broken workflow rather than as a missing
+      # grant.
+      security-events: write
+      contents: read
+      # Needed to read the workflow run's own metadata on private repositories. Free
+      # to keep on a public one and one less thing to debug if visibility changes.
+      actions: read
+    strategy:
+      # A single-entry matrix, kept rather than inlined. It is what makes adding a
+      # language a one-stanza edit instead of a restructure, and `fail-fast: false`
+      # below is then already correct: one language failing to build a database must
+      # not cancel the other's analysis and hide its findings.
+      fail-fast: false
+      matrix:
+        include:
+          # build-mode: none — CodeQL extracts from source without running Gradle.
+          #
+          # The alternative, build-mode: manual with a real `./gradlew assembleDebug`,
+          # buys a more precise database for generated code (Room, Hilt, view
+          # binding) at the cost of an Android build inside every analysis, on every
+          # PR, on top of the one pr-ci.yml already runs. Loki's own code is what is
+          # worth analysing, and that is source-visible. Revisit if the app grows a
+          # meaningful amount of annotation-generated logic.
+          #
+          # Note `paths`/`paths-ignore` in a CodeQL config apply to interpreted
+          # languages only. A path filter here would be silently ignored, not
+          # rejected — which is exactly the kind of configuration that looks like it
+          # is working. So there is none.
+          - language: java-kotlin
+            build-mode: none
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          # Nothing here performs an authenticated git operation, and CodeQL's
+          # extractors run third-party code over the tree.
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4.37.6
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4.37.6
+        with:
+          # The category namespaces this run's results. Required the moment a second
+          # analysis exists in the repo — without it, two uploads overwrite each
+          # other's alert set rather than adding to it. Set now so that adding one
+          # cannot silently erase this one's findings.
+          category: "/language:${{ matrix.language }}"

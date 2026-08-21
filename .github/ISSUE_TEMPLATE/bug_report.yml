@@ -1,0 +1,129 @@
+name: 🐛 Bug report
+description: Report something that isn't working correctly
+title: "[Bug]: "
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug.
+
+        **The privilege-mode and version fields matter more than anything else here.** Loki reads
+        other apps' logcat output through either a root shell or Shizuku, and the two behave
+        differently enough that a report without that field often cannot be reproduced at all.
+
+        ⚠️ **Before you paste a log: read it.** Logcat carries access tokens, URLs, account names,
+        file paths and other people's data. Anything you paste into a public issue is public
+        permanently. Redact first, or attach only the few lines that show the bug.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight checklist
+      options:
+        - label: I'm on the latest release of Loki and the bug still happens.
+          required: true
+        - label: I searched existing issues and didn't find a duplicate.
+          required: true
+        - label: I've removed tokens, personal data and other apps' data from anything I pasted below.
+          required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: When I ..., Loki ...; I expected ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. See ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: privilege-mode
+    attributes:
+      label: Privilege mode
+      description: >-
+        How is Loki getting READ_LOGS on your device? This is in onboarding, and it is the single
+        most useful field in this form.
+      options:
+        - Root (Magisk / KernelSU / APatch)
+        - Shizuku
+        - Neither — Loki says it has no permission
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Log capture (nothing appears, capture stops, wrong app's logs)
+        - Live monitoring / foreground service / notification
+        - Saving & exporting logs
+        - App list / app picker
+        - Filtering & search
+        - Onboarding & permission setup
+        - UI / theming
+        - Performance (jank, memory, battery)
+        - Crash on launch
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: Loki version
+      description: The version shown in the app, or the release you downloaded (e.g. 1.0.0).
+    validations:
+      required: true
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: Install source
+      description: Where did this build come from?
+      options:
+        - GitHub Releases
+        - Obtainium
+        - IzzyOnDroid / F-Droid
+        - Built from source
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device & Android version
+      placeholder: e.g. Pixel 8, Android 16 (or Samsung S23, One UI 7)
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: >-
+        Loki's OWN log lines, or a stack trace — not a full capture of another app. Text pasted
+        here is auto-formatted as code. Redact before pasting; see the warning at the top.
+      render: shell
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / additional context
+      description: >-
+        Drag and drop screenshots here, or add anything else relevant. Don't put images in the log
+        field above — the code formatting stops them rendering.
