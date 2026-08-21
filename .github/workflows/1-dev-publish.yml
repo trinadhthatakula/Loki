@@ -40,12 +40,24 @@ jobs:
     uses: ./.github/workflows/release-rung.yml
     permissions:
       contents: write
-    secrets: inherit
+    # Enumerated, not `secrets: inherit`. Inherit hands the called workflow every
+    # secret this repository has — including ones added later for something else
+    # entirely — and release-rung.yml runs a Gradle build, which means third-party
+    # plugin and R8 code, in the same job. These four are what it needs.
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
     with:
       rung: dev
-      # github.run_number, not the version code: re-running a failed publish on
-      # the same commit mints a second tag rather than colliding with the first.
-      tag_suffix: -dev-${{ github.run_number }}
+      # run_number identifies the push, run_attempt the retry, and both are needed:
+      # run_number does NOT change when a run is re-run, so on its own a retry of a
+      # publish that failed *after* cutting the tag would collide with the tag it
+      # already created and overwrite that release in place. With the attempt
+      # appended, each retry publishes its own pre-release and the failed one stays
+      # visible instead of being quietly replaced.
+      tag_suffix: -dev-${{ github.run_number }}-${{ github.run_attempt }}
       title_prefix: Dev Build
       prerelease: true
       # Notes are optional here. A dev build falls back to the commit log; the

@@ -59,8 +59,21 @@ representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported privately to the community leaders responsible for enforcement through
-GitHub's [private vulnerability / abuse reporting](https://github.com/trinadhthatakula/Loki/security).
+reported privately to the maintainer, who is the only community leader
+responsible for enforcement at present.
+
+Loki does not yet have a dedicated conduct address. Until it does, use the
+[private reporting form on the repository's Security tab](https://github.com/trinadhthatakula/Loki/security/advisories/new).
+That form exists for vulnerability reports, so it is a stopgap rather than the
+right tool — but it is the one channel here that is genuinely private, it
+reaches the maintainer and nobody else, and a conduct report sent through it
+will be treated as a conduct report.
+
+If the person you need to report is the maintainer, or you would rather not
+route it through this repository at all, GitHub's own
+[abuse and spam reporting](https://docs.github.com/en/communities/maintaining-your-safety-on-github/reporting-abuse-or-spam)
+goes to GitHub Support instead and is entirely independent of this project.
+
 All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the

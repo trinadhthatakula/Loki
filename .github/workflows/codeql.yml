@@ -55,21 +55,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # build-mode: none — CodeQL extracts from source without running Gradle.
+          # build-mode: manual, and it has to be.
           #
-          # The alternative, build-mode: manual with a real `./gradlew assembleDebug`,
-          # buys a more precise database for generated code (Room, Hilt, view
-          # binding) at the cost of an Android build inside every analysis, on every
-          # PR, on top of the one pr-ci.yml already runs. Loki's own code is what is
-          # worth analysing, and that is source-visible. Revisit if the app grows a
-          # meaningful amount of annotation-generated logic.
+          # `build-mode: none` is the cheap option — CodeQL extracts from source
+          # without running Gradle — and it is what Thor uses. It does not work here,
+          # because buildless extraction is a **Java-only** feature: it does not read
+          # Kotlin. Thor gets away with it only because two stray `.java` files are
+          # enough to produce a non-empty database; its 400-odd Kotlin files are
+          # silently not analysed. Loki has zero `.java` files, so `none` produced an
+          # empty database and `codeql database finalize` exited 32 with "CodeQL could
+          # not process any code written in Java/Kotlin" — a red check on every PR.
+          #
+          # So the Kotlin compiler has to actually run, with CodeQL's tracer wrapped
+          # around it. `:app:compileDebugKotlin` is the smallest task that does that.
+          # There is no KSP and no kapt in this project, so a fuller `assembleDebug`
+          # would extract nothing this task misses — it would only add R8, lint,
+          # packaging and resource processing to every analysis, none of which
+          # contribute code to the database.
           #
           # Note `paths`/`paths-ignore` in a CodeQL config apply to interpreted
           # languages only. A path filter here would be silently ignored, not
           # rejected — which is exactly the kind of configuration that looks like it
           # is working. So there is none.
           - language: java-kotlin
-            build-mode: none
+            build-mode: manual
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -78,11 +87,33 @@ jobs:
           # extractors run third-party code over the tree.
           persist-credentials: false
 
+      # Before init, so that the JDK the build will use is already the one on PATH
+      # when CodeQL sets up tracing around it.
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5.7.0
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+          cache: 'gradle'
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4.37.6
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
+
+      # Everything between init and analyze runs inside CodeQL's tracer, which is the
+      # only reason this step exists — the compiled output is thrown away.
+      #
+      # `--no-daemon` is not tidiness. A reused Gradle daemon is a long-lived process
+      # that can pre-date the tracer, and compilation happening inside one is
+      # compilation CodeQL never sees; the failure mode is an empty database, not an
+      # error. The Kotlin compile daemon is a child of this traced process, so it is
+      # traced normally.
+      - name: Build Kotlin for the CodeQL database
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4.37.6

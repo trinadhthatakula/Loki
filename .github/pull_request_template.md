@@ -3,8 +3,9 @@ Thanks for contributing to Loki.
 
 Two things before you fill this in:
   • PRs target `dev`, not `master`. If GitHub picked `master` for you, change the base.
-  • Don't bump `versionCode` in gradle.properties. Releases are cut separately —
-    see docs/branching-and-releases.md.
+  • Don't bump `versionCode` in gradle.properties, UNLESS this is a release PR — those
+    exist to carry the bump and nothing else. Either way it may only ever go UP.
+    See docs/branching-and-releases.md.
 -->
 
 ## What & why
@@ -47,7 +48,8 @@ services/, this is the only way a reviewer knows what was really run.
 
 - [ ] Scoped to the stated purpose — no unrelated edits, no drive-by reformatting
 - [ ] Targets `dev`
-- [ ] No `versionCode` change in `gradle.properties`
+- [ ] No `versionCode` change in `gradle.properties` — or, for a release PR, the bump is the
+      only change and it increases the code
 - [ ] No secrets, keystores, `jks.properties` or local paths committed
 - [ ] Docs updated if this changes how Loki is used or built
 - [ ] If this touches the privileged surface: no unvalidated input reaches a shell string, and

@@ -15,6 +15,28 @@ name: Manual build (publishes nothing)
 # Thor's equivalent runs fastlane against a Play service account and builds both
 # product flavours. Loki has neither — no Play pipeline (see release-rung.yml for
 # why) and a single unflavoured variant — so this is plain Gradle.
+#
+# --- ACCEPTED RISK: this workflow signs with the release key ---
+#
+# workflow_dispatch accepts any ref, so anyone with write access can produce a
+# correctly-signed APK from an unreviewed branch — one that a user's device will
+# accept as an update to their installed Loki. The key is also on disk while
+# Gradle, R8 and their plugins run code from that branch.
+#
+# Accepted rather than overlooked, because the alternatives are worse for what
+# this workflow exists to do. Dropping signing makes `variant: release` produce an
+# APK that cannot be installed at all, which removes the ability to check R8 output
+# on a real device — the main reason to build a release variant by hand. Gating it
+# behind an Environment with a branch policy makes the job FAIL on exactly the
+# topic branches it is meant to serve.
+#
+# The exposure is also not specific to this file: the release rungs run Gradle with
+# the same key present. What is specific here is the arbitrary ref, and the honest
+# mitigation for that is who holds write access, not YAML.
+#
+# Two things do follow from it, and both are implemented below: the keystore is
+# removed in an `if: always()` step, and the dependency cache is off, so nothing
+# this job touched while holding the key is carried into another run.
 on:
   workflow_dispatch:
     inputs:
@@ -76,13 +98,35 @@ jobs:
         if: inputs.variant == 'release'
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+          # All four as one credential set — same reasoning as release-rung.yml. Strings
+          # rather than arrays because `${#arr[@]}` on an empty array is unbound under
+          # `set -u` in bash 3.2.
+          present=""
+          missing=""
+          for name in ANDROID_KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -n "${!name}" ]; then
+              present="$present $name"
+            else
+              missing="$missing $name"
+            fi
+          done
+
+          if [ -z "$present" ]; then
             echo "signed=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set — this build will produce an UNSIGNED release APK, which Android will refuse to install. Build the debug variant instead if you need something installable, or add the four signing secrets."
+            echo "::warning::No signing secrets are set — this build will produce an UNSIGNED release APK, which Android will refuse to install. Build the debug variant instead if you need something installable, or add all four signing secrets."
             exit 0
           fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::Signing is partially configured:${present} set,${missing} missing or empty. Set the missing secrets, or remove all four to build unsigned deliberately." >&2
+            exit 1
+          fi
+
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/release.jks
           # base64 --decode exits 0 on empty input, so the redirect cannot report a
           # truncated secret. Check the file.
@@ -111,7 +155,11 @@ jobs:
           KEY_ALIAS: ${{ steps.keystore.outputs.signed == 'true' && secrets.KEY_ALIAS || '' }}
           KEY_PASSWORD: ${{ steps.keystore.outputs.signed == 'true' && secrets.KEY_PASSWORD || '' }}
           KEYSTORE_PASSWORD: ${{ steps.keystore.outputs.signed == 'true' && secrets.KEYSTORE_PASSWORD || '' }}
-          KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
+          # Gated like the other three. Unconditional here would leave a path set with
+          # blank passwords beside it, which app/build.gradle.kts now reads as a partial
+          # credential set and refuses — including on the debug variant, where the step
+          # above does not run at all.
+          KEYSTORE_FILE_PATH: ${{ steps.keystore.outputs.signed == 'true' && format('{0}/app/release.jks', github.workspace) || '' }}
         run: |
           set -euo pipefail
           case "$VARIANT" in

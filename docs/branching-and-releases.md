@@ -29,7 +29,7 @@ Loki has exactly two permanent branches. Everything else is a short-lived topic 
   translate/z┘     │                 │
                    ▼                 ▼
             GitHub pre-release   GitHub release
-            v<name>-dev-<run>       v<name>
+         v<name>-dev-<run>-<try>    v<name>
                                 (Latest — what
                                  Obtainium and
                                  IzzyOnDroid see)
@@ -59,7 +59,7 @@ there is no arithmetic on the version number anywhere in the routing.
 
 | Merge | Workflow | GitHub | Notes required |
 |---|---|---|---|
-| `<topic>` → `dev` | [`1-dev-publish.yml`](../.github/workflows/1-dev-publish.yml) | pre-release `v<name>-dev-<run>` | ❌ falls back to the commit log |
+| `<topic>` → `dev` | [`1-dev-publish.yml`](../.github/workflows/1-dev-publish.yml) | pre-release `v<name>-dev-<run>-<attempt>` | ❌ falls back to the commit log |
 | `dev` → `master` | [`2-master-release.yml`](../.github/workflows/2-master-release.yml) | **release** `v<name>` (Latest) | ✅ hard requirement |
 
 Both are thin callers of one shared implementation,
@@ -68,10 +68,15 @@ declare. **If a rung needs to behave differently, add an input — do not fork t
 
 ### Rung 1 — `dev`
 
-Builds a signed release APK from the merged tree and publishes it as a GitHub **pre-release** tagged
-`v<name>-dev-<run-number>`. The run number, not the version code, is what makes the tag unique: a
-re-run of a failed publish on the same commit mints a second tag rather than colliding with the
-first.
+Builds a release APK from the merged tree and publishes it as a GitHub **pre-release** tagged
+`v<name>-dev-<run-number>-<attempt>`. The run number and attempt, not the version code, are what
+make the tag unique: the run number changes per push, and the attempt changes per re-run — so
+retrying a publish that failed *after* cutting its tag mints a new pre-release instead of
+overwriting the one already there.
+
+The APK is **signed when the four signing secrets are configured, and unsigned when they are not**
+— see [*Signing*](#signing) below. That is deliberate, so the ladder can be exercised before a
+keystore exists, and an unsigned release says so in its own body.
 
 Notes are optional here. Without a `release-notes/v<name>/github.md` the release body falls back to
 the commit log since the last tag. Curated notes are written once, for the stable.
@@ -130,6 +135,42 @@ because that would mean re-releasing a version that already shipped.
 
 Bump the version in its own `chore(release)` commit, never mixed into a feature PR.
 
+**It may only ever go up.** `detect-version-bump.sh` fails the run outright on a decrease rather
+than publishing it, because that is the one version mistake nothing downstream can fix: Android
+refuses a lower `versionCode` as an update, and a code that has already shipped cannot be reused.
+
+---
+
+## Signing
+
+Four values, and they are **one credential set** — all four or none:
+
+| | |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | the keystore itself, base64-encoded |
+| `KEYSTORE_PASSWORD` | |
+| `KEY_ALIAS` | |
+| `KEY_PASSWORD` | |
+
+Locally they come from a git-ignored `jks.properties` at the repo root (`keyAlias`, `keyPassword`,
+`storePassword`, `storeFile`); in CI they come from repository secrets, and the rung decodes the
+keystore into `app/release.jks` for the length of the job.
+
+**None of them is required to build.** With no credentials anywhere,
+[`app/build.gradle.kts`](../app/build.gradle.kts) assigns no `signingConfig` and the release APK
+comes out **unsigned** — which is the correct result for anyone rebuilding from source, and the
+state this repository is in until the four secrets are added. Both rungs still run and still
+publish; the release body says, in as many words, that the APK is unsigned and will not install.
+
+**A partial set is a hard error, not a fall back to unsigned.** Three secrets set and one blank
+fails the rung before the build, and a `jks.properties` missing a key fails Gradle at
+configuration. The alternative is worse than either: an APK that came out unsigned while the
+release body claimed it was signed.
+
+> `${{ secrets.X }}` expands to the **empty string** for a secret that does not exist, so "set but
+> blank" and "absent" are the same thing to a workflow. Everything here treats blank as absent for
+> that reason.
+
 ---
 
 ## Release notes
@@ -139,16 +180,24 @@ it they are optional and the GitHub body falls back to the commit log.
 
 | File | Consumed by | Limit |
 |---|---|---|
-| `github.md` | the GitHub release body | — |
+| `github.md` | the GitHub release body | 125,000 characters — the GitHub API's cap on a release body |
 | `playstore.txt` | F-Droid / IzzyOnDroid changelog; Play later | 500 characters |
 
-Check before you push, not after:
+Check before you push, not after. For a `dev` push, where notes are optional, sizes are all there is
+to check:
 
 ```bash
 .github/scripts/check-notes-budget.sh 1.0.1
 ```
 
-The same gate runs pre-flight in CI, *before* the build, so an oversized or missing file costs you a
+For a **stable** release, pass the same `--require` flags the `master` rung passes, so that a
+missing file fails on your machine instead of in the release run:
+
+```bash
+.github/scripts/check-notes-budget.sh --require github.md --require playstore.txt 1.0.1
+```
+
+That gate runs pre-flight in CI, *before* the build, so an oversized or missing file costs you a
 failed check rather than a half-finished release.
 
 `playstore.txt` also has to reach
@@ -218,9 +267,15 @@ account and no track inputs. That is a decision to revisit, not a gap to fill �
 ### IzzyOnDroid
 
 The metadata IzzyOnDroid needs already exists under
-[`fastlane/metadata/android/`](../fastlane/metadata/android), and the release APKs are signed and
-tagged the way its rebuilder expects. Submission itself is a manual step against IzzyOnDroid's own
-repo and has not been done yet.
+[`fastlane/metadata/android/`](../fastlane/metadata/android), and the stable rung tags releases the
+way its rebuilder expects. Submission itself is a manual step against IzzyOnDroid's own repo and has
+not been done yet.
+
+Two things have to be true first, and neither is today: the four signing secrets have to be
+configured, because an unsigned APK is not a candidate for anything (see [*Signing*](#signing)), and
+the listing metadata has to describe the revision being submitted. Land listing changes **before**
+tagging — a store page and an APK that disagree about what the app does is the one failure mode
+nobody notices from inside the repository.
 
 ---
 

@@ -81,8 +81,13 @@ logs no longer lose their app name after a restart.
 New: filter by log level while capturing.
 ```
 
-Emoji are fine and count as characters, not bytes — `check-notes-budget.sh` measures characters, so
-a "✨" costs 1, not 3.
+Emoji count as characters, not bytes — `check-notes-budget.sh` measures characters, because that is
+how the services enforcing these caps measure them, so a "✨" costs 1 there and not 3.
+
+That said, keep this file close to plain text and comfortably under budget rather than exactly at
+it. The 500 is Play's limit; the F-Droid-family clients that read
+`fastlane/.../changelogs/<code>.txt` do their own truncation, and a changelog written right up to
+one service's cap is the one that gets cut off mid-sentence in another.
 
 ## Which rung needs what
 

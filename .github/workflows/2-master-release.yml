@@ -33,7 +33,14 @@ jobs:
     uses: ./.github/workflows/release-rung.yml
     permissions:
       contents: write
-    secrets: inherit
+    # Enumerated, not `secrets: inherit` — same reasoning as 1-dev-publish.yml, and
+    # it matters more here: this is the rung that holds the signing key while
+    # building the tree users install.
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
     with:
       rung: master
       # Empty, deliberately. Obtainium and IzzyOnDroid resolve the unsuffixed

@@ -116,7 +116,7 @@ publishes AAR metadata demanding API 37, so at 36 the build died in `checkDebugA
 compiling a line. `compileSdk` only widens the compile-time API surface; raising `targetSdk` opts in
 to new *runtime* behaviour and is a separate, testable change.
 
-```
+```text
 com/valhalla/loki/
   di/Modules.kt      ← the single Koin module + initKoin()
   model/             ← SuCli, PermissionManager, AppInfo, AppInfoGrabber, Packages, SavedLogs

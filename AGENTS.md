@@ -62,7 +62,7 @@ authority the app does not otherwise hold. When you touch any of them:
 ## 🛠️ Verification gates
 
 Run these before opening a PR or requesting review. This is the same list `build-and-test` runs in
-CI, and `build-and-test` is a required check:
+CI, and `build-and-test` is a required check (so is `static-analysis`):
 
 ```bash
 ./gradlew assembleDebug testDebugUnitTest :app:compileDebugAndroidTestKotlin \

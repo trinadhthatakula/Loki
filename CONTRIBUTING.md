@@ -53,7 +53,7 @@ a detail.
 
 ### Layout
 
-```
+```text
 app/src/main/java/com/valhalla/loki/
 ├── Loki.kt              ← Application class, Koin start-up
 ├── MainActivity.kt
@@ -157,7 +157,8 @@ translated the same way: create a directory for your locale (`de-DE`, `hi-IN`, �
    actually exercised.
 
 CI will run build, unit tests, instrumented-test compilation, lint, an R8 release build, CodeQL and
-workflow/shell linting on your PR. `build-and-test` is a required check.
+workflow/shell linting on your PR. `build-and-test` and `static-analysis` are both required checks —
+neither can be waved through.
 
 ---
 

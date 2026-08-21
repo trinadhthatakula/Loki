@@ -100,11 +100,14 @@ jobs:
           ./gradlew assembleDebug testDebugUnitTest
           :app:compileDebugAndroidTestKotlin --stacktrace
 
-      # A step of build-and-test rather than a job of its own, deliberately.
-      # "build-and-test" is the only context the rulesets require; a separate lint job
-      # would show up green-or-red on the PR but merge would not wait for it until
-      # someone also edited the ruleset. Inside this job it is required the moment this
-      # file merges.
+      # A step of build-and-test rather than a job of its own, deliberately. Lint reuses
+      # this job's already-warm Gradle state — a separate job would re-resolve the
+      # dependency graph and rebuild the same classes to say the same thing.
+      #
+      # Being a step also means it cannot be forgotten in the ruleset. Both jobs in this
+      # file are required contexts on `master` and `dev`, so a red static-analysis blocks
+      # a merge too — but that is a repository setting, and a setting can drift. A step
+      # inside a required job is required by construction.
       #
       # lintRelease, not lintDebug: the release build type is where the strict
       # detectors live, and it is the variant that ships. A debug-variant lint pass

@@ -13,21 +13,64 @@ plugins {
 // Two sources, checked in this order: a local `jks.properties` at the repo root (git-ignored), or
 // the CI environment variables the release workflow exports. Neither is required to build.
 val keystorePropertiesFile: File = rootProject.file("jks.properties")
-val keystoreProperties = Properties()
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-}
 
-// Whether this machine can sign a release at all. Single-sourced because the `signingConfigs`
+// The four values a release signingConfig needs, resolved once from whichever source has them,
+// or null when this machine cannot sign at all. Single-sourced because the `signingConfigs`
 // block and the `release` build type both need the same answer — see the comment on
 // `signingConfig` below for why the build type has to ask rather than just assign.
 //
+// All four together, as ONE credential set, because a partial set is not weaker signing — it is
+// a build that fails later and somewhere else. A `jks.properties` missing one key used to reach
+// `keystoreProperties["keyPassword"] as String` and throw an NPE naming the cast rather than the
+// key; an environment with only some of the variables set used to assign a config with an empty
+// keyAlias and die in `validateSigningRelease`, which names neither the source nor the value.
+//
 // Blank counts as absent, not present. `${{ secrets.KEY_ALIAS }}` expands to the EMPTY STRING
 // when the secret does not exist, so a `!= null` test would report credentials on a repository
-// that has none and then fail `validateSigningRelease` on an empty keyAlias — which is the state
-// Loki is actually in until the four signing secrets are added.
-val hasSigningCredentials: Boolean =
-    keystorePropertiesFile.exists() || !System.getenv("KEY_ALIAS").isNullOrBlank()
+// that has none — which is the state Loki is actually in until the four signing secrets are added.
+val signingCredentials: Map<String, String>? = run {
+    fun require(source: String, values: Map<String, String?>): Map<String, String> {
+        val missing = values.filterValues { it.isNullOrBlank() }.keys
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "Signing is partially configured. $source supplies " +
+                    "${(values.keys - missing).joinToString(", ")}, but " +
+                    "${missing.joinToString(", ")} is missing or blank. All four are one " +
+                    "credential set — fill in the rest, or remove the lot to build unsigned. " +
+                    "See docs/branching-and-releases.md."
+            )
+        }
+        return values.mapValues { (_, value) -> value!! }
+    }
+
+    // A jks.properties that exists is a statement of intent to sign, so a hole in it is an
+    // error rather than a reason to look at the environment: silently falling through would
+    // produce an unsigned APK from a machine that plainly meant to sign one.
+    if (keystorePropertiesFile.exists()) {
+        val props = Properties()
+        FileInputStream(keystorePropertiesFile).use { props.load(it) }
+        return@run require(
+            "jks.properties",
+            mapOf(
+                "keyAlias" to props.getProperty("keyAlias"),
+                "keyPassword" to props.getProperty("keyPassword"),
+                "storePassword" to props.getProperty("storePassword"),
+                "storeFile" to props.getProperty("storeFile"),
+            ),
+        )
+    }
+
+    // CI (GitHub Actions) — the release workflow decodes the keystore and exports these.
+    val env = mapOf(
+        "keyAlias" to System.getenv("KEY_ALIAS"),
+        "keyPassword" to System.getenv("KEY_PASSWORD"),
+        "storePassword" to System.getenv("KEYSTORE_PASSWORD"),
+        "storeFile" to System.getenv("KEYSTORE_FILE_PATH"),
+    )
+    if (env.values.all { it.isNullOrBlank() }) null else require("the environment", env)
+}
+
+val hasSigningCredentials: Boolean = signingCredentials != null
 
 // --- VERSIONING ---
 //
@@ -92,22 +135,17 @@ android {
 
     signingConfigs {
         create("release") {
-            if (keystorePropertiesFile.exists()) {
-                keyAlias = keystoreProperties["keyAlias"] as String
-                keyPassword = keystoreProperties["keyPassword"] as String
-                storeFile = file(keystoreProperties["storeFile"] as String)
-                storePassword = keystoreProperties["storePassword"] as String
-            } else if (!System.getenv("KEY_ALIAS").isNullOrBlank()) {
-                // CI (GitHub Actions) — the release workflow decodes the keystore and exports these.
-                keyAlias = System.getenv("KEY_ALIAS")
-                keyPassword = System.getenv("KEY_PASSWORD")
-                storePassword = System.getenv("KEYSTORE_PASSWORD")
-                storeFile = file(System.getenv("KEYSTORE_FILE_PATH") ?: "release.jks")
+            val credentials = signingCredentials
+            if (credentials != null) {
+                keyAlias = credentials.getValue("keyAlias")
+                keyPassword = credentials.getValue("keyPassword")
+                storePassword = credentials.getValue("storePassword")
+                storeFile = file(credentials.getValue("storeFile"))
             } else {
                 logger.lifecycle(
-                    "No jks.properties and no KEY_ALIAS in the environment — the release APK will " +
-                        "be UNSIGNED. That is the correct result for a source rebuild; signing " +
-                        "happens downstream."
+                    "No jks.properties and no signing credentials in the environment — the " +
+                        "release APK will be UNSIGNED. That is the correct result for a source " +
+                        "rebuild; signing happens downstream."
                 )
             }
         }

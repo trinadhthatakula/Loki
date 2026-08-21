@@ -95,6 +95,34 @@ else
 fi
 rm -rf "$d"
 
+# 6b. A DECREASE is a hard error, not a publish. This is the case that cannot be
+#     undone downstream: Android refuses a lower versionCode as an update, and a
+#     published code cannot be reused, so the only place to stop it is before the
+#     build.
+d="$(setup_repo 10001)"; bump_repo "$d" 10000
+assertions=$((assertions + 1))
+if (cd "$d" && bash "$script" 'HEAD^') >/dev/null 2>&1; then
+  echo "  FAIL: a versionCode decrease should exit non-zero"
+  failed=1
+else
+  echo "  ok: versionCode decrease exits non-zero"
+fi
+rm -rf "$d"
+
+# 6c. ...and it must not be reported as a release on the way out. A decrease that
+#     exits non-zero but still prints changed=true would publish if any caller
+#     ever read the output without checking the status.
+d="$(setup_repo 10001)"; bump_repo "$d" 10000
+out="$(cd "$d" && bash "$script" 'HEAD^' 2>/dev/null || true)"
+assertions=$((assertions + 1))
+if printf '%s' "$out" | grep -qx -- 'changed=true'; then
+  echo "  FAIL: a versionCode decrease must not report changed=true"
+  failed=1
+else
+  echo "  ok: versionCode decrease reports no bump"
+fi
+rm -rf "$d"
+
 # 7. The real gradle.properties must be parseable by the anchored grep, and the
 #    prose above the assignment must not be. That comment block mentions
 #    `versionCode` on several lines, which is exactly what an unanchored match

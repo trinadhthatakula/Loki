@@ -13,6 +13,20 @@ pipeline at all.
 If Loki ever does publish to Play, this metadata is already in the shape `supply` expects. That is a
 happy coincidence of the two tools sharing a layout, not a plan in progress.
 
+## Land listing changes before you tag
+
+These files are read out of the git tree, and **not necessarily out of the same revision as the
+APK**. A build is made from a tag; a listing may be picked up from whatever the repository's default
+branch says at the time the index is refreshed. Which one a given service uses is that service's
+business, and it can change.
+
+The practical rule that survives either answer: **edit the listing, then bump and tag.** A
+description that promises a feature the tagged APK does not have is a bug report you will never see,
+because the person reading the store page is not the person who can file it.
+
+The one file this does not apply to is `changelogs/<versionCode>.txt`, which is keyed to the code and
+so cannot describe the wrong release — see below.
+
 ## Layout
 
 ```

@@ -44,6 +44,24 @@ on:
         description: "skip | fail. What an unbumped versionCode means here."
         required: true
         type: string
+    # Declared rather than inherited. `secrets: inherit` in the callers would hand this
+    # workflow every secret the repository has, present and future — so a secret added
+    # later for something unrelated silently becomes reachable from a job that runs
+    # third-party Gradle and R8 plugin code. Naming the four means the set this job can
+    # see is the set it needs, and adding to it is a visible edit here.
+    #
+    # required: false on all four, because publishing UNSIGNED is a supported state —
+    # see the signing block below. GITHUB_TOKEN is not declarable and does not need to
+    # be; it is minted per job.
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      KEYSTORE_PASSWORD:
+        required: false
+      KEY_ALIAS:
+        required: false
+      KEY_PASSWORD:
+        required: false
     outputs:
       published:
         value: ${{ jobs.rung.outputs.published }}
@@ -64,13 +82,19 @@ jobs:
 
     steps:
       # fetch-depth: 0 for full history and tags, which the release-notes commit-log
-      # fallback needs (`git describe --tags`). persist-credentials is left at its default
-      # here, unlike pr-ci.yml: this job legitimately holds `contents: write` for the
-      # release step, so removing the credential from the git config buys nothing.
+      # fallback needs (`git describe --tags`).
+      #
+      # persist-credentials: false even though this job holds `contents: write`. The
+      # write is exercised by the release step, which receives GITHUB_TOKEN in its own
+      # env; the default checkout instead leaves that token in .git/config, where every
+      # later step — including a Gradle build running third-party plugin and R8 code
+      # from this tree, with the signing keystore beside it — can read and use it. The
+      # git operations here are reads of the local clone and need no credential.
       - name: Checkout code
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       # The all-zero SHA is deliberate, not a placeholder. github.event.before is empty on
       # a workflow_dispatch, and the obvious default — HEAD^ — is a perfectly readable ref
@@ -175,17 +199,44 @@ jobs:
       #
       # An unsigned release APK is not installable. That is the point of the warning: it is
       # a visible, recoverable state, where a red build after the tag was cut is not.
+      #
+      # All four secrets are treated as ONE credential set, and a partial set is a hard
+      # error rather than a fall back to unsigned. Keying `signed` off the keystore alone
+      # would set it true with, say, KEY_ALIAS missing — Gradle would then produce an
+      # unsigned APK while `signed=true` suppressed the warning in the release body, so
+      # the one release users install would claim to be signed and not be.
       - name: Decode keystore
         id: keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+          # Strings rather than arrays: `${#arr[@]}` on an empty array is an unbound
+          # variable under `set -u` in bash 3.2, and these blocks get copied to laptops.
+          present=""
+          missing=""
+          for name in ANDROID_KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -n "${!name}" ]; then
+              present="$present $name"
+            else
+              missing="$missing $name"
+            fi
+          done
+
+          if [ -z "$present" ]; then
             echo "signed=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set — this rung will publish an UNSIGNED APK, which cannot be installed. Add the four signing secrets (ANDROID_KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD) to fix it."
+            echo "::warning::No signing secrets are set — this rung will publish an UNSIGNED APK, which cannot be installed. Add all four (ANDROID_KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD) to fix it."
             exit 0
           fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::Signing is partially configured:${present} set,${missing} missing or empty. All four are one credential set — a partial one cannot sign, and continuing would publish an APK that says it is signed and is not. Set the missing secrets, or remove all four to publish unsigned deliberately." >&2
+            exit 1
+          fi
+
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/release.jks
           # `base64 --decode` exits 0 on empty input, so the write itself cannot report a
           # truncated secret. Check the result instead: otherwise a bad secret surfaces
@@ -213,7 +264,11 @@ jobs:
           KEY_ALIAS: ${{ steps.keystore.outputs.signed == 'true' && secrets.KEY_ALIAS || '' }}
           KEY_PASSWORD: ${{ steps.keystore.outputs.signed == 'true' && secrets.KEY_PASSWORD || '' }}
           KEYSTORE_PASSWORD: ${{ steps.keystore.outputs.signed == 'true' && secrets.KEYSTORE_PASSWORD || '' }}
-          KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
+          # Gated like the other three, not set unconditionally. app/build.gradle.kts
+          # reads "all four blank" as "cannot sign, build unsigned" and anything less
+          # as a misconfiguration to fail on — so a path left set while the passwords
+          # are blank is exactly the partial set it now refuses.
+          KEYSTORE_FILE_PATH: ${{ steps.keystore.outputs.signed == 'true' && format('{0}/app/release.jks', github.workspace) || '' }}
         run: ./gradlew assembleRelease --stacktrace
 
       # One asset, named after the version rather than after the build directory. AGP emits

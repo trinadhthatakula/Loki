@@ -28,8 +28,13 @@ names, trademarks, service marks, or logos.
 
 - Use, study, run, and modify the source for any purpose.
 - Distribute your own modified versions — **provided** you comply with the GPL: release the complete
-  corresponding source, preserve the copyright and license notices, and do **not** combine the
-  GPL-licensed code with proprietary components in a distributed binary.
+  corresponding source, and preserve the copyright and license notices. Whether adding a
+  closed-source component is permitted is a question about the GPL's combined-work rules and its
+  exceptions (the System Library exception, additional permissions a copyright holder may grant),
+  and it is not one this file can answer for your case. What this project asks for its own builds is
+  stated under *[Note on ads, trackers, and proprietary SDKs](#note-on-ads-trackers-and-proprietary-sdks)*
+  below. If you are planning to ship something combined, read the licence and take your own advice —
+  none of this is legal advice.
 - Refer to Loki by name in **truthful, descriptive, non-endorsing** ways — "a fork of Loki", "based
   on Loki", "compatible with Loki's export format".
 

@@ -14,7 +14,8 @@
 # Fails OPEN on an unreadable OLD value - report a release and let the publish
 # step adjudicate, rather than silently skipping a real one. An unreadable
 # CURRENT value is a hard error: there is nothing to publish and nothing to
-# compare.
+# compare. A readable old value that is GREATER than the current one is also a
+# hard error - see the comment on that check below.
 #
 # This script only decides whether a push was MEANT to publish. It is not a
 # uniqueness check: the release step's own tag collision is the backstop for
@@ -47,6 +48,18 @@ old_code="$(git show "${old_ref}:${props}" 2>/dev/null | read_code || true)"
 # function names the APK and this one names the tag and the release-notes
 # directory. test-detect-version-bump.sh reads the Kotlin and pins the pair.
 name="$((new_code / 10000)).$(((new_code % 10000) / 100)).$((new_code % 100))"
+
+# A DECREASE is never a release, and it is not the fail-open case either. Left to
+# the branch below it would report changed=true and publish, and the resulting APK
+# cannot be installed over the one already on a user's device: Android refuses a
+# lower versionCode as an update, and a code that has shipped cannot be reused.
+# That is unrecoverable from the publish side, so it is caught here, before the
+# build. Only checked when the old value is readable - an unreadable one still
+# fails open, for the reasons at the top of this file.
+if [ -n "$old_code" ] && [ "$old_code" -gt "$new_code" ]; then
+  echo "::error::versionCode went DOWN: $old_code -> $new_code in $props. Android will not install a lower versionCode over a higher one, and a code that has already been published cannot be reused. Restore $old_code, or pick a value above it." >&2
+  exit 1
+fi
 
 if [ -n "$old_code" ] && [ "$old_code" = "$new_code" ]; then
   echo "::notice::versionCode unchanged at $new_code - building for verification only." >&2

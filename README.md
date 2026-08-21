@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg"></a>
-  <a href="https://github.com/trinadhthatakula/Loki/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/trinadhthatakula/Loki?include_prereleases&sort=semver"></a>
+  <a href="https://github.com/trinadhthatakula/Loki/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/trinadhthatakula/Loki?sort=semver"></a>
   <a href="https://github.com/trinadhthatakula/Loki/actions/workflows/pr-ci.yml"><img alt="CI" src="https://github.com/trinadhthatakula/Loki/actions/workflows/pr-ci.yml/badge.svg"></a>
   <img alt="minSdk 24" src="https://img.shields.io/badge/minSdk-24-brightgreen.svg">
 </p>
