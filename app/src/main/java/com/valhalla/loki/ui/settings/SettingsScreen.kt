@@ -5,8 +5,12 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.DocumentsContract
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -25,6 +29,7 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.Info
@@ -59,6 +64,7 @@ import com.valhalla.asgard.components.AsgardSettingRow
 import com.valhalla.asgard.components.AsgardSettingToggleRow
 import com.valhalla.loki.BuildConfig
 import com.valhalla.loki.model.ThemeMode
+import com.valhalla.loki.services.LokiDocumentsProvider
 import com.valhalla.loki.ui.theme.monoFontFamily
 import com.valhalla.loki.ui.theme.success
 import org.koin.androidx.compose.koinViewModel
@@ -66,6 +72,15 @@ import java.util.Locale
 
 /** The repository URL, shown and opened by the About section. */
 private const val SOURCE_URL = "https://github.com/trinadhthatakula/Loki"
+
+/**
+ * `EXTRA_INITIAL_URI` for the browse row — a document URI for [LokiDocumentsProvider]'s root, which
+ * is the form `ACTION_OPEN_DOCUMENT_TREE` documents for that extra.
+ */
+private val LOKI_LOGS_ROOT_URI: Uri = DocumentsContract.buildDocumentUri(
+    LokiDocumentsProvider.AUTHORITY,
+    LokiDocumentsProvider.ROOT_DOCUMENT_ID,
+)
 
 /**
  * The whole command, quoted so `am force-stop` runs **on the device**.
@@ -87,6 +102,19 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
+
+    // One ACTION_OPEN_DOCUMENT_TREE, pre-pointed at Loki's own DocumentsProvider root, which is
+    // what §5.2 recommends in place of the contribution's two broken external routes: one
+    // mis-parsed secondary-user paths and Android 11+ refuses Android/data document IDs, the other
+    // called FileProvider.getUriForFile on a *directory* with a fabricated MIME type.
+    //
+    // The returned tree URI is deliberately unused — Loki already owns this directory and needs no
+    // grant to it. The intent is used as a browse entry point, which is what the row's subtitle
+    // promises: the picker opens showing the saved logs, and the user can read, copy out or delete
+    // from there. That is the whole feature.
+    val browseLogsFolder = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { /* nothing to persist */ }
 
     var showAdbSheet by remember { mutableStateOf(false) }
     var showThemeSheet by remember { mutableStateOf(false) }
@@ -233,6 +261,21 @@ fun SettingsScreen(
             item {
                 val stats = uiState.stats
                 AsgardSectionCard(title = "Saved logs", modifier = Modifier.fillMaxWidth()) {
+                    AsgardSettingRow(
+                        title = "Browse in a file manager",
+                        subtitle = "Opens the picker at Loki's own logs root",
+                        icon = Icons.Filled.FolderOpen,
+                        onClick = {
+                            runCatching { browseLogsFolder.launch(LOKI_LOGS_ROOT_URI) }
+                                .onFailure {
+                                    Toast.makeText(
+                                        context,
+                                        "No file picker on this device.",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                        },
+                    )
                     AsgardSettingRow(
                         title = "Clear all saved logs",
                         subtitle = when {

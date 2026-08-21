@@ -55,6 +55,27 @@
                 android:resource="@xml/provider_paths" />
         </provider>
 
+        <!--
+          Makes saved logs reachable from any file manager or SAF picker without moving them out of
+          filesDir. `exported="true"` is required — the framework has to see the provider — but the
+          MANAGE_DOCUMENTS permission is signature-level and held only by the system's DocumentsUI,
+          so no third-party app can bind to it directly. Everything else arrives as a per-document
+          URI grant the user chose, which is what grantUriPermissions is for.
+
+          The authority is duplicated in LokiDocumentsProvider.AUTHORITY, which builds the change
+          notification URIs; the two must agree.
+        -->
+        <provider
+            android:name=".services.LokiDocumentsProvider"
+            android:authorities="${applicationId}.documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"
