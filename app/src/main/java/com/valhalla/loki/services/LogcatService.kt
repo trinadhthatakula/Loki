@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
-import android.os.Build
 import android.os.IBinder
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -156,14 +155,13 @@ class LogcatService : Service() {
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val serviceChannel = NotificationChannel(
-                NOTIFICATION_CHANNEL_ID,
-                "Loki Logging Service Channel",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            getSystemService(NotificationManager::class.java).createNotificationChannel(serviceChannel)
-        }
+        // No SDK_INT guard: notification channels arrived in O (26) and minSdk is 28.
+        val serviceChannel = NotificationChannel(
+            NOTIFICATION_CHANNEL_ID,
+            "Loki Logging Service Channel",
+            NotificationManager.IMPORTANCE_LOW
+        )
+        getSystemService(NotificationManager::class.java).createNotificationChannel(serviceChannel)
     }
 
     override fun onDestroy() {

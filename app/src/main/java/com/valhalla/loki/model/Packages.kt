@@ -9,11 +9,8 @@ import androidx.annotation.ChecksSdkIntAtLeast
 
 object Targets {
 
-    @get:ChecksSdkIntAtLeast(api = Build.VERSION_CODES.O)
-    val O = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-
-    @get:ChecksSdkIntAtLeast(api = Build.VERSION_CODES.P)
-    val P = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+    // No O (26) or P (28): minSdk is 28, so both were unconditionally true and lint flagged the
+    // comparisons as obsolete. Add a constant back only when there is a guard that needs it.
 
     @get:ChecksSdkIntAtLeast(api = Build.VERSION_CODES.Q)
     val Q = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q

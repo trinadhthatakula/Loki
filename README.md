@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg"></a>
   <a href="https://github.com/trinadhthatakula/Loki/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/trinadhthatakula/Loki?sort=semver"></a>
   <a href="https://github.com/trinadhthatakula/Loki/actions/workflows/pr-ci.yml"><img alt="CI" src="https://github.com/trinadhthatakula/Loki/actions/workflows/pr-ci.yml/badge.svg"></a>
-  <img alt="minSdk 24" src="https://img.shields.io/badge/minSdk-24-brightgreen.svg">
+  <img alt="minSdk 28" src="https://img.shields.io/badge/minSdk-28-brightgreen.svg">
 </p>
 
 - 100% Kotlin
@@ -39,7 +39,8 @@ It's like giving Loki a secret mission to peek into the digital diary of your ap
 
 Two things have to be true.
 
-**Android 7.0 (API 24) or newer.** That's the floor.
+**Android 9.0 (API 28) or newer.** That's the floor. It used to be 7.0, and if you are on 7.x or
+8.x an older release will still install — but new ones won't.
 
 **Root or Shizuku.** This is the part worth understanding before you install. Reading *another*
 application's logs needs `android.permission.READ_LOGS`, which Android classifies as

@@ -110,7 +110,7 @@ read the same layout — it is not evidence of Play intent.
 
 ## Architecture
 
-Single Gradle module, `:app`. `minSdk 24`, `targetSdk 36`, `compileSdk 37`, JVM target 21,
+Single Gradle module, `:app`. `minSdk 28`, `targetSdk 36`, `compileSdk 37`, JVM target 21,
 `applicationId com.valhalla.loki`.
 
 `compileSdk` is 37 while `targetSdk` stays 36, and that gap is deliberate: the pinned Compose BOM

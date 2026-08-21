@@ -128,7 +128,21 @@ android {
 
     defaultConfig {
         applicationId = "com.valhalla.loki"
-        minSdk = 24
+
+        // 28, raised from 24 to take Asgard UI.
+        //
+        // `com.trinadhthatakula:asgard` declares minSdk 28 in its AAR metadata, and depending on
+        // a library above your own floor is a hard `checkDebugAarMetadata` failure, not a
+        // warning. The alternative was to lower Asgard's floor and publish 2.0.1; raising Loki's
+        // was chosen instead.
+        //
+        // Worth recording that Asgard's 28 is conservative rather than load-bearing: it imports
+        // nothing from `android.*`, and the only API-sensitive thing in it is `Modifier.blur`,
+        // which documents its own no-op below Android 12. So this drops Android 7.0, 7.1, 8.0
+        // and 8.1 for a floor the library does not technically need — a knowing trade, not an
+        // oversight. Anything below 28 also predates scoped storage entirely, which is the same
+        // range docs/review-anon-contribution.md §1.1 rejected external log storage over.
+        minSdk = 28
         targetSdk = 36
 
         val code = resolveVersionCode()
@@ -212,6 +226,9 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+
+    /// Asgard UI — shared Compose components (theme-agnostic; reads the host MaterialTheme)
+    implementation(libs.asgard)
 
     /// Lifecycle
     implementation(libs.androidx.lifecycle.runtime.ktx)

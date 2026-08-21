@@ -15,7 +15,7 @@ It is based on an **older** Loki than `dev`, so every build file in it is a down
 **Overall:** there is real, wanted work here — the theme system, the log viewer, the in-app file
 explorer, the `FileObserver` live refresh and the Settings screen are all things Loki should have.
 There is also a fake progress delay, a non-functional feature, a permission grant nobody asked for,
-two path-traversal holes, a crash on API 24–28, and an OOM waiting for a large capture. Nothing here
+two path-traversal holes, a crash on API 28, and an OOM waiting for a large capture. Nothing here
 should land as-is; most of it should land after rework.
 
 Counts: **accept 6 · accept-with-fixes 11 · reject 14**.
@@ -30,10 +30,14 @@ Counts: **accept 6 · accept-with-fixes 11 · reject 14**.
 `ui/settings/*`, `ui/crash/*` all move log storage from `filesDir` to
 `getExternalFilesDir(null)/Loki`.
 
-`minSdk` is **24**. On API 24–28 there is no scoped storage: any app holding
-`READ_EXTERNAL_STORAGE` can read `Android/data/com.valhalla.loki/files/**`. Captured logcat carries
-auth tokens, URLs and third parties' PII — `AGENTS.md` rule 2 treats it as sensitive data. This
-change makes every saved log world-readable on four API levels.
+`minSdk` is **28** (see §10.8), and scoped storage only arrived in API 29. So on API 28 — the
+floor, and still a supported level — any app holding `READ_EXTERNAL_STORAGE` can read
+`Android/data/com.valhalla.loki/files/**`. Captured logcat carries auth tokens, URLs and third
+parties' PII, and `AGENTS.md` rule 2 treats it as sensitive data.
+
+Raising the floor narrowed this from four API levels to one; it did not fix it. "Only the oldest
+supported release leaks the user's logs" is not an acceptable resting place, and the argument stops
+depending on API levels at all the moment you note that `filesDir` costs nothing to keep.
 
 `filesDir` is private on every API level.
 
@@ -85,10 +89,12 @@ The apps are already in memory. This loop does no work: it adds a deliberate **~
 scaffolding left commented around the live call, `// 0f to 1fff`, and `refreshApps()` wrapping
 `loadApps()` in a second `viewModelScope.launch` when `loadApps()` already launches its own.
 
-### 1.4 `FileObserver(File, Int)` is API 29+ — crashes on API 24–28 (HIGH)
+### 1.4 `FileObserver(File, Int)` is API 29+ — crashes on API 28 (HIGH)
 
 `SavedLogsViewModel.startWatchingDirectory()` uses the `File` constructor, added in API 29.
-`minSdk` 24 → `NoSuchMethodError` on launch for every user below Android 10.
+`minSdk` 28 → `NoSuchMethodError` on launch for every user on Android 9. Raising the floor to 28
+(§10.8) shrank the blast radius from four API levels to one, but a hard crash on a supported level
+is still a crash: the `String` constructor is the fix, not the floor.
 
 Two more problems with the same feature (the *idea* is good and worth keeping):
 
@@ -624,8 +630,15 @@ own, and anything holding a long scrollable body — those stay real destination
 
 The owner's Asgard UI library may be used where it genuinely replaces hand-rolled UI. "If needed" is
 the operative phrase: it is not a mandate to adopt it screen-wide, and every component taken from it
-has to clear the same bar as any new dependency (minSdk 24, R8 full mode with no
-`missing_rules.txt`, no Material 3 version conflict).
+has to clear the same bar as any new dependency (R8 full mode with no `missing_rules.txt`, no
+Material 3 version conflict).
+
+**This one moved Loki's `minSdk`.** Asgard 2.0.0 declares 28, and depending on a library above your
+own floor fails `checkDebugAarMetadata` outright. Given the choice between lowering Asgard's floor
+(publishing 2.0.1) and raising Loki's, the owner chose to raise Loki's — so the floor is **28**, not
+24, from the commit that added Asgard onward, and Android 7.0/7.1/8.0/8.1 are no longer supported.
+Every API-range claim elsewhere in this document has been restated against 28; the underlying
+findings did not change, only how many API levels they affect.
 
 ### Scope note
 

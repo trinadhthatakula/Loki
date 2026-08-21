@@ -15,6 +15,9 @@ kotlinx-serialization-json = "1.11.0"
 # tracking whatever version Odin happens to ship. Keep it deliberate.
 kotlinxCoroutines = "1.11.0"
 material3 = "1.5.0-alpha26"
+# Asgard UI. Note this is what sets Loki's `minSdk` floor at 28 — see the comment on `minSdk`
+# in app/build.gradle.kts before lowering either number.
+asgardUi = "2.0.0"
 splashscreen = "1.2.0"
 koinAndroid = "4.2.2"
 shizuku = "13.1.5"
@@ -36,6 +39,11 @@ androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-toolin
 androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
+# Asgard UI — the shared Compose component library, extracted from Thor's design system. Theme
+# agnostic: every colour, type and shape comes from the host MaterialTheme, so there is no
+# AsgardTheme to install. The coordinate is the KMP root module, which redirects Android
+# consumers to `asgard-android`; depend on the root, not the platform artifact.
+asgard = { module = "com.trinadhthatakula:asgard", version.ref = "asgardUi" }
 #Root — Odin, the Kotlin-first coroutine root shell (replaced libsu 6.0.0)
 odin = { module = "com.trinadhthatakula:odin", version.ref = "odin" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinx-serialization-json" }
