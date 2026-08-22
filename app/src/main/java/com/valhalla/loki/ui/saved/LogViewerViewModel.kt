@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.loki.model.LogLevel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
@@ -118,15 +119,26 @@ class LogViewerViewModel(
 
     init {
         viewModelScope.launch {
-            val result = runCatching { readTail() }
-            result.getOrNull()?.let { loaded.value = it }
-            _uiState.update {
-                it.copy(
-                    isLoading = false,
-                    error = result.exceptionOrNull()?.let { e ->
-                        "Could not read this log: ${e.message ?: e.javaClass.simpleName}"
-                    },
-                )
+            // Not `runCatching`: it catches Throwable, and [readTail] throws CancellationException
+            // on purpose — `coroutineContext.ensureActive()` is how it notices the user leaving a
+            // huge file mid-read. Caught, that cancellation lands in `exceptionOrNull()` and is
+            // written into `error` as "Could not read this log: ...", turning a control-flow signal
+            // into a failure the user is shown; and since `_uiState.update` does not suspend, it
+            // runs even though the job is already cancelled. Only `onCleared` cancels today, which
+            // keeps the damage to a screen that is leaving anyway — but the pattern breaks the
+            // moment the read is restarted or moved under a cancellable parent.
+            try {
+                loaded.value = readTail()
+                _uiState.update { it.copy(isLoading = false, error = null) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "Could not read this log: ${e.message ?: e.javaClass.simpleName}",
+                    )
+                }
             }
         }
         viewModelScope.launch {
