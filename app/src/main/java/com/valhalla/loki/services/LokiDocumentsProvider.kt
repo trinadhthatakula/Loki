@@ -190,7 +190,13 @@ class LokiDocumentsProvider : DocumentsProvider() {
         if (!file.deleteRecursively()) {
             throw FileNotFoundException("Failed to delete ${file.name}")
         }
-        val parent = file.parentFile?.takeIf { it.startsWith(rootDir) } ?: rootDir
+        // Canonical containment, not `File.startsWith`. `resolve` hands back an already-canonical
+        // path, so `parentFile` is canonical too, while `rootDir` is `filesDir/logs` as the platform
+        // spells it — and on a device where `/data/data/<pkg>` is a symlink to `/data/user/0/<pkg>`
+        // those two are different strings for the same directory. A component-wise compare answered
+        // false for a parent that really was inside the root, so the notification fell back to the
+        // root's children URI and an open picker went on showing the file it had just deleted.
+        val parent = file.parentFile?.takeIf { isInsideRoot(it) } ?: rootDir
         requireCtx().contentResolver.notifyChange(childrenUri(documentIdOf(parent)), null)
     }
 
@@ -236,12 +242,34 @@ class LokiDocumentsProvider : DocumentsProvider() {
     private fun canonicalOf(file: File): String =
         runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
 
+    /**
+     * Whether [file] is really inside [rootDir] once symlinks are resolved.
+     *
+     * [resolve] proves this for a caller-supplied *ID*, but the two listing methods never go through
+     * it: [queryChildDocuments] passes whatever `listFiles()` returned, and [querySearchDocuments]
+     * passes a `FileTreeWalk` result — and `FileTreeWalk` follows directory symlinks. `logs/` is
+     * writable by the root shell this app runs, so a link pointing out of the tree is reachable in
+     * practice rather than merely conceivable.
+     */
+    private fun isInsideRoot(file: File): Boolean {
+        val root = canonicalOf(rootDir)
+        val path = canonicalOf(file)
+        return path == root || path.startsWith(root + File.separator)
+    }
+
     private fun childrenUri(documentId: String): Uri =
         DocumentsContract.buildChildDocumentsUri(AUTHORITY, documentId)
 
     // --- rows --------------------------------------------------------------------------------
 
     private fun addFileRow(cursor: MatrixCursor, file: File) {
+        // A row is metadata leaving the app. Emitting one for a file outside the root hands the
+        // calling application that file's name, size, modification time and — because [documentIdOf]
+        // cannot strip a prefix the path does not have — its full absolute path as the document ID.
+        // [resolve] refuses such an ID afterwards, so the *content* stays unreadable, but by then the
+        // picker has already been told the file exists and how big it is. Drop it before it is a row
+        // rather than relying on the read being refused later.
+        if (!isInsideRoot(file)) return
         val documentId = documentIdOf(file)
         val isDir = file.isDirectory
         // No FLAG_SUPPORTS_WRITE and no FLAG_DIR_SUPPORTS_CREATE — see the class comment. Delete is
