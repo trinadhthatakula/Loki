@@ -49,19 +49,27 @@ expected to follow literally.
 ## 🔐 The privileged surface
 
 Loki reads **other applications'** logcat output. That needs `android.permission.READ_LOGS`, which
-is `signature|privileged` and cannot be granted to a normal app. Loki reaches it two ways:
+is `signature|privileged|development` and cannot be granted to a normal app by the user. Loki
+reaches it two ways:
 
 - **Root** — a shell via Odin, injected as `com.valhalla.superuser.ktx.ShellRepository`.
 - **Shizuku** — an ADB-privileged process via `rikka.shizuku`.
 
-So `model/PermissionManager.kt`, `model/LogcatCapture.kt` and `services/LogcatService.kt` execute
-with authority the app does not otherwise hold. When you touch any of them:
+Either channel is also used, at launch, to grant Loki the permission *itself* — see
+[Self-granting READ_LOGS](CLAUDE.md#self-granting-read_logs) for why that works, why it kills the
+process, and why the grant order is not cosmetic.
+
+So `model/PermissionManager.kt`, `model/SelfPermissionGrabber.kt`, `model/LogcatCapture.kt` and
+`services/LogcatService.kt` execute with authority the app does not otherwise hold. When you touch
+any of them:
 
 - **Never** interpolate unvalidated input into a shell string. A package name that did not come
   from `PackageManager` is a command injection into a root shell.
 - Take the `ShellRepository` **interface** from Koin; never construct a shell inline. That is what
   keeps the privileged surface swappable in a test — and countable by grep.
-- **Never** assume a privileged command succeeded. Check the exit code.
+- **Never** assume a privileged command succeeded. Check the exit code — and where the platform
+  can tell you the outcome directly, as `checkSelfPermission` does after a `pm grant`, re-read it
+  rather than inferring it from a shell's exit status.
 - Treat a captured log as sensitive data. Logcat carries tokens, URLs and third parties' PII;
   nothing in Loki may send it anywhere the user did not choose.
 - State in the PR which privilege mode(s) you actually exercised — **Root**, **Shizuku**, or

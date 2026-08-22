@@ -44,9 +44,10 @@ Two things have to be true.
 
 **Root or Shizuku.** This is the part worth understanding before you install. Reading *another*
 application's logs needs `android.permission.READ_LOGS`, which Android classifies as
-`signature|privileged` — meaning **no app can ask you for it and no user can grant it**. Google
-closed that door in Android 4.1, deliberately, because a log stream is a firehose of other apps'
-secrets. So Loki borrows the privilege instead:
+`signature|privileged|development` — meaning **no app can ask you for it and no user can grant it
+from Settings**. Google closed that door in Android 4.1, deliberately, because a log stream is a
+firehose of other apps' secrets. The one door left open is a privileged shell, so that is what Loki
+borrows:
 
 | Path | What you need | Notes |
 |---|---|---|
@@ -54,8 +55,14 @@ secrets. So Loki borrows the privilege instead:
 | **Shizuku** | [Shizuku](https://shizuku.rikka.app/) running | No root needed. Pair over wireless debugging or ADB; survives until reboot. |
 | Neither | — | Loki can only read its own logs. Not useful. |
 
-Loki's onboarding walks through whichever you have. If you have neither, Shizuku is the easier one
-to get.
+Once you have one of them, Loki does the rest itself. At launch it checks whether root or Shizuku is
+available and, if so, uses that access to grant itself `READ_LOGS`. Android tears an app down the
+moment its permissions change, so **Loki closes once** when the grant lands — that is the platform
+doing its job, not a crash. With root, Loki reopens itself a couple of seconds later; with Shizuku
+it asks first and you reopen it by hand, because a Shizuku shell dies along with the app that
+started it. From then on there is nothing more to set up.
+
+If you have neither root nor Shizuku, Shizuku is the easier one to get.
 
 ## Install
 

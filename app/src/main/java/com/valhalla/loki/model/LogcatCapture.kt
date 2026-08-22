@@ -24,8 +24,24 @@ enum class CaptureMode { NONE, READ_LOGS, ROOT }
  * Streams one app's logcat output into a file.
  *
  * Two privilege paths, in preference order:
- *  - **READ_LOGS** granted directly (Shizuku or ADB) — a plain [ProcessBuilder], no shell at all.
  *  - **Root** — a *dedicated* Odin shell, not the process-wide main shell.
+ *  - **READ_LOGS** granted directly (Shizuku or ADB) — a plain [ProcessBuilder], no shell at all.
+ *
+ * Root first, which is not the obvious order and was not the original one. Holding `READ_LOGS` is
+ * exactly what subjects a caller to logd's per-request consent gate
+ * (`com.android.systemui/.logcat.LogAccessDialogActivity`), and a `su` logcat sidesteps it entirely.
+ *
+ * ⚠️ **That reasoning is read from the platform's sources, not observed here.** Settling it on
+ * hardware needs root *and* `READ_LOGS` on one device, which nobody working on this has had, so what
+ * follows is a prediction and is labelled as one. `logd`'s `clientIsExemptedFromUserConsent` exempts
+ * clients below uid 10000, which covers a root shell at uid 0 and never covers an app; and
+ * `LogcatManagerService` raises the dialog only for a requester in `PROCESS_STATE_TOP`, declining
+ * anything else with no prompt and no diagnostic. A capture runs under a foreground service, which
+ * is not TOP. A declined *streaming* reader is not killed either — logd revokes its privilege and
+ * leaves it attached — so the symptom to expect is a capture that sits there filling nothing, rather
+ * than one that exits non-zero and says why. Self-granting `READ_LOGS` would have *demoted* every
+ * rooted user's capture into that path, which is the reason this order changed; if the prediction
+ * turns out wrong, the order is merely unnecessary rather than harmful.
  *
  * The dedicated shell is not a stylistic choice. `logcat` without `-d` never exits, Odin cannot
  * interrupt an in-flight command, and cancelling an `asFlow()` collector only stops emission while
@@ -62,6 +78,15 @@ class LogcatCapture(
     @Volatile
     private var stopping = false
 
+    /**
+     * Set while a self-grant is about to issue a command that kills Loki's whole appId.
+     *
+     * See [blockForPrivilegedGrant] for why this exists rather than the grabber reading
+     * [isCapturing] a second time.
+     */
+    @Volatile
+    private var blockedForGrant = false
+
     /** The shell owning the streaming `logcat`. Closing it is how the capture stops. */
     private var captureShell: Shell? = null
 
@@ -70,6 +95,39 @@ class LogcatCapture(
 
     val isCapturing: Boolean
         get() = job?.isActive == true
+
+    /**
+     * Reserves this instance for a grant that will kill the whole appId, or refuses because a
+     * capture is already running.
+     *
+     * **This is a claim, not a question, and that is the point.** `SelfPermissionGrabber` used to
+     * read [isCapturing] once at the top of its sweep and then go on to probe root — up to Odin's
+     * ten-second timeout — before granting. A capture started anywhere in that window was killed by
+     * the grant, taking its foreground service and its half-written file with it, and no amount of
+     * re-reading a flag fixes a check-then-act. Taking the same monitor [start] holds does: exactly
+     * one of the two wins, and whichever loses does nothing.
+     *
+     * Returns `false` when a capture is running, in which case the caller must abandon the grant and
+     * leave its retry open — the capture is the user's work, the grant is housekeeping.
+     */
+    @Synchronized
+    fun blockForPrivilegedGrant(): Boolean {
+        if (isCapturing) return false
+        blockedForGrant = true
+        return true
+    }
+
+    /**
+     * Releases a claim taken by [blockForPrivilegedGrant].
+     *
+     * Only ever reached when the grant did *not* kill us, which — for a permission carrying
+     * supplementary gids — means it did not land. On the success path the flag dies with the process,
+     * which is the only cleanup it needs.
+     */
+    @Synchronized
+    fun releaseAfterPrivilegedGrant() {
+        blockedForGrant = false
+    }
 
     /**
      * Begins capturing [appInfo]'s logs into [outputFile].
@@ -100,21 +158,40 @@ class LogcatCapture(
             var mode = CaptureMode.NONE
             try {
                 mode = when {
+                    // Checked here rather than as an early return from start(), so a refusal still
+                    // funnels through the `finally` below. `onExit` is how LogcatService tears down
+                    // the foreground service it has already started; returning early would leave it
+                    // running with no capture behind it.
+                    blockedForGrant -> {
+                        Log.w(TAG, "a privileged self-grant is in flight; not starting a capture")
+                        CaptureMode.NONE
+                    }
+
                     uid == null -> {
                         Log.e(TAG, "no uid for ${appInfo.packageName}; not installed for this user")
                         CaptureMode.NONE
                     }
 
-                    permissionManager.hasReadLogsPermission() -> {
-                        captureWithReadLogs(uid, outputFile)
-                        CaptureMode.READ_LOGS
-                    }
+                    // Root is probed first, and the cost of that is real: it spawns or reuses `su`.
+                    // It is still the right order — see the class KDoc for what preferring
+                    // READ_LOGS costs a rooted user — and the probe is bounded by Odin's timeout.
+                    //
+                    // `&&` rather than a nested `if`, so that root being present but unusable falls
+                    // through to READ_LOGS instead of ending the capture. Three ways to get there:
+                    // the root manager withdraws between the probe and the shell, the shell comes
+                    // back unprivileged, or `logcat` rejects the uid filter under root. This hole
+                    // arrived with the reorder — before it, a rooted user holding READ_LOGS took the
+                    // READ_LOGS arm anyway and never noticed.
+                    permissionManager.isRootAvailable() && captureWithRoot(uid, outputFile) ->
+                        CaptureMode.ROOT
 
-                    permissionManager.isRootAvailable() ->
-                        if (captureWithRoot(uid, outputFile)) CaptureMode.ROOT else CaptureMode.NONE
+                    permissionManager.hasReadLogsPermission() &&
+                        captureWithReadLogs(uid, outputFile) -> CaptureMode.READ_LOGS
 
+                    // Reached both when there is no privilege at all and when every privilege
+                    // there is refused the command, which is why it no longer claims the former.
                     else -> {
-                        Log.w(TAG, "no privilege available; nothing to capture")
+                        Log.w(TAG, "no privilege produced a capture; nothing to record")
                         CaptureMode.NONE
                     }
                 }
@@ -224,10 +301,15 @@ class LogcatCapture(
      * stderr is deliberately *not* folded into the capture. A user's log file should contain log
      * lines; a diagnostic from our own tooling in the middle of it is corruption, and it is also
      * how a permission failure would come to look like ordinary content.
+     *
+     * Returns whether a capture ran, for the same reason [captureWithRoot] does: `false` means the
+     * handle was refused because [stop] had already been asked for, and recording
+     * [CaptureMode.READ_LOGS] for a `logcat` nobody ever read from points the next reader of a bug
+     * report at the wrong privilege.
      */
-    private fun captureWithReadLogs(uid: Int, outputFile: File) {
+    private fun captureWithReadLogs(uid: Int, outputFile: File): Boolean {
         val process = ProcessBuilder("logcat", "-T", "1", "--uid=$uid").start()
-        if (!adopt(process = process)) return
+        if (!adopt(process = process)) return false
         try {
             drainUntilClosed {
                 outputFile.bufferedWriter().use { writer ->
@@ -239,6 +321,7 @@ class LogcatCapture(
         } finally {
             process.destroy()
         }
+        return true
     }
 
     /**
@@ -298,6 +381,10 @@ class LogcatCapture(
         if (!probe.isSuccess) {
             val why = probe.stderr.joinToString(" ").trim()
             Log.e(TAG, "root logcat probe exited ${probe.code}" + if (why.isEmpty()) "" else ": $why")
+            // The shell was adopted a few lines up and is still open. The caller now falls through
+            // to the READ_LOGS arm, which would leave a root shell alive for the whole of that
+            // capture — held by a branch that gave up — until the `finally` in start() got to it.
+            release()
             return false
         }
 
