@@ -380,7 +380,14 @@ private fun LogBody(
                                 isDragging = false
                                 continue
                             }
-                            pointerY = change.position.y
+                            // Clamped, because a drag that leaves the Box still reports its real
+                            // position — negative above the top — and -1f is the "no pointer"
+                            // sentinel `autoScrollSpeed` tests for. Storing a raw -3f would read as
+                            // "finger lifted" and stop the scroll dead at the boundary, exactly
+                            // where a selection drag heading off the top of the list needs it to
+                            // keep going. The bottom edge needs no clamp: past-the-end just pins the
+                            // ramp at 1f on its own.
+                            pointerY = change.position.y.coerceAtLeast(0f)
                             val origin = pressOrigin
                                 ?: change.position.also { pressOrigin = it }
                             if (!isDragging &&
@@ -530,7 +537,9 @@ private fun annotate(text: String, query: String, highlight: Color): AnnotatedSt
  *
  * Negative is up. Zero everywhere except within [edge] of either end, and ramping linearly to ±1 at
  * the very edge, so the list creeps when the finger is near the boundary and races when it is past
- * it. `y < 0` is "no pointer", which is not the same as "pointer at the top".
+ * it. `y < 0` is "no pointer", which is not the same as "pointer at the top" — the caller clamps a
+ * real pointer to 0f so that dragging off the top of the list keeps scrolling at full speed rather
+ * than being mistaken for a lifted finger.
  */
 private fun autoScrollSpeed(y: Float, height: Float, edge: Float): Float = when {
     y < 0f || height <= 0f -> 0f
