@@ -77,7 +77,8 @@ fun ColorScheme.logLevelColor(level: LogLevel): Color = if (LocalDarkTheme.curre
     }
 }
 
-private val lightScheme = lightColorScheme(
+
+private val AsgardianLightColorScheme = lightColorScheme(
     primary = LightPrimary,
     onPrimary = LightOnPrimary,
     primaryContainer = LightPrimaryContainer,
@@ -93,8 +94,6 @@ private val lightScheme = lightColorScheme(
     error = LightError,
     onError = LightOnError,
     errorContainer = LightErrorContainer,
-    onErrorContainer = LightOnErrorContainer,
-    background = LightSurface,
     onBackground = LightOnSurface,
     surface = LightSurface,
     onSurface = LightOnSurface,
@@ -102,6 +101,7 @@ private val lightScheme = lightColorScheme(
     onSurfaceVariant = LightOnSurfaceVariant,
     outline = LightOutline,
     outlineVariant = LightOutlineVariant,
+    background = LightSurface,
     surfaceContainerLowest = LightSurfaceContainerLowest,
     surfaceContainerLow = LightSurfaceContainerLow,
     surfaceContainer = LightSurfaceContainer,
@@ -109,7 +109,13 @@ private val lightScheme = lightColorScheme(
     surfaceContainerHighest = LightSurfaceContainerHighest,
 )
 
-private val darkScheme = darkColorScheme(
+// Token-for-token Thor's dark scheme. Three slots Loki used to assign are left unset here because
+// Thor leaves them unset, so all three fall back to the Material 3 baseline: `onErrorContainer` (in
+// the light scheme above too) plus `surfaceDim` and `surfaceBright`. Nothing in Loki reads any of
+// them directly today. Note the asymmetry that leaves behind — amoled() below still overrides
+// surfaceDim and surfaceBright, so those two are themed in AMOLED dark and baseline in ordinary
+// dark. The values are still in Color.kt if anything ever needs them wired back up.
+private val AsgardianDarkColorScheme = darkColorScheme(
     primary = Primary,
     onPrimary = OnPrimary,
     primaryContainer = PrimaryContainer,
@@ -125,21 +131,18 @@ private val darkScheme = darkColorScheme(
     error = Error,
     onError = OnError,
     errorContainer = ErrorContainer,
-    onErrorContainer = OnErrorContainer,
-    background = Background,
     onBackground = OnBackground,
     surface = Surface,
     onSurface = OnSurface,
     surfaceVariant = SurfaceVariant,
     onSurfaceVariant = OnSurfaceVariant,
-    surfaceTint = SurfaceTint,
-    surfaceDim = SurfaceDim,
-    surfaceBright = SurfaceBright,
     outline = Outline,
     outlineVariant = OutlineVariant,
     inverseSurface = InverseSurface,
     inverseOnSurface = InverseOnSurface,
     inversePrimary = InversePrimary,
+    surfaceTint = SurfaceTint,
+    background = Background,
     surfaceContainerLowest = SurfaceContainerLowest,
     surfaceContainerLow = SurfaceContainerLow,
     surfaceContainer = SurfaceContainer,
@@ -195,8 +198,8 @@ fun LokiTheme(
             dynamicDarkColorScheme(context).let { if (amoledMode) it.amoled() else it }
 
         useDynamic -> dynamicLightColorScheme(context)
-        darkTheme -> if (amoledMode) darkScheme.amoled() else darkScheme
-        else -> lightScheme
+        darkTheme -> if (amoledMode) AsgardianDarkColorScheme.amoled() else AsgardianDarkColorScheme
+        else -> AsgardianLightColorScheme
     }
 
     // Edge-to-edge is on (MainActivity), so the app draws behind the system bars and they are
