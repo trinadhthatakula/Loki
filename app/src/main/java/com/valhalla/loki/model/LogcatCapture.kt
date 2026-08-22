@@ -1,11 +1,8 @@
 package com.valhalla.loki.model
 
-import android.content.Context
 import android.util.Log
 import com.valhalla.superuser.Shell
 import com.valhalla.superuser.ktx.asFlow
-import com.valhalla.superuser.ktx.await
-import com.valhalla.superuser.utils.escapeForShell
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +13,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedWriter
 import java.io.File
+import java.io.IOException
 
 private const val TAG = "LogcatCapture"
 
@@ -35,14 +33,34 @@ enum class CaptureMode { NONE, READ_LOGS, ROOT }
  * owning it also avoids `Shell.cmd(...)`, whose pending-job retry would rebuild a root shell and
  * restart `logcat` at the very moment we were trying to stop it.
  *
+ * Both paths filter by the target's **uid**, resolved from `PackageManager`. That is not
+ * interchangeable with filtering by pid: `/proc` is mounted `hidepid=invisible`, so a normal app
+ * cannot see another app's pid at all and `pidof` returns nothing every single time — which is
+ * exactly how this used to fail, silently falling through to a filter that matched nothing and
+ * producing a running capture with a zero-byte file. A uid needs no `/proc` access, survives the
+ * target restarting, and covers every process the app runs under one filter.
+ *
+ * Two limits worth knowing: packages that share a `sharedUserId` share a uid, so capturing one
+ * captures its siblings; and processes the app runs under an *isolated* uid (Chrome's renderers,
+ * for instance) fall outside it, because the platform gives them a uid of their own.
+ *
  * Only one capture runs at a time; [start] on a busy instance is ignored.
  */
 class LogcatCapture(
-    private val context: Context,
-    private val permissionManager: PermissionManager
+    private val permissionManager: PermissionManager,
+    private val packages: Packages
 ) {
 
     private var job: Job? = null
+
+    /**
+     * Set the moment [stop] is asked for, cleared by [start].
+     *
+     * Destroying `logcat` makes it exit 143, so without this the exit-code check below would cry
+     * failure on every ordinary stop and become the kind of warning people learn to ignore.
+     */
+    @Volatile
+    private var stopping = false
 
     /** The shell owning the streaming `logcat`. Closing it is how the capture stops. */
     private var captureShell: Shell? = null
@@ -72,16 +90,28 @@ class LogcatCapture(
             return
         }
 
+        stopping = false
         job = scope.launch(Dispatchers.IO) {
-            val mode = try {
-                when {
+            // Resolved once, here, so that neither capture function ever sees the package name.
+            // What reaches the privileged command line is an integer that came from
+            // PackageManager, which is what makes AGENTS.md rule 1 hold by construction rather
+            // than by remembering to escape.
+            val uid = packages.getApplicationInfoOrNull(appInfo.packageName)?.uid
+            var mode = CaptureMode.NONE
+            try {
+                mode = when {
+                    uid == null -> {
+                        Log.e(TAG, "no uid for ${appInfo.packageName}; not installed for this user")
+                        CaptureMode.NONE
+                    }
+
                     permissionManager.hasReadLogsPermission() -> {
-                        captureWithReadLogs(appInfo.packageName, outputFile)
+                        captureWithReadLogs(uid, outputFile)
                         CaptureMode.READ_LOGS
                     }
 
                     permissionManager.isRootAvailable() -> {
-                        captureWithRoot(appInfo.packageName, outputFile)
+                        captureWithRoot(uid, outputFile)
                         CaptureMode.ROOT
                     }
 
@@ -94,14 +124,18 @@ class LogcatCapture(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "capture failed", e)
-                CaptureMode.NONE
             } finally {
                 release()
+                // Inside the `finally`, and before the hop below: stop() cancels this job, so
+                // `withContext` rethrows on the way out and anything placed after the try/finally
+                // never runs. This line used to sit there, which meant the one diagnostic saying
+                // which privilege a capture actually used was silent on the normal stop path —
+                // the only path it really needed to cover.
+                Log.d(TAG, "capture of ${appInfo.packageName} ended (mode=$mode)")
                 // NonCancellable: this runs on the cancellation path too, and the caller still
                 // needs its teardown callback.
                 withContext(NonCancellable + Dispatchers.Main) { onExit() }
             }
-            Log.d(TAG, "capture of ${appInfo.packageName} ended (mode=$mode)")
         }
     }
 
@@ -113,6 +147,7 @@ class LogcatCapture(
      */
     @Synchronized
     fun stop() {
+        stopping = true
         release()
         job?.cancel()
         job = null
@@ -153,84 +188,107 @@ class LogcatCapture(
         captureProcess = null
     }
 
+    /**
+     * Runs [block], treating the [IOException] that [release] provokes as the ordinary end of a
+     * capture rather than a failure.
+     *
+     * Stopping means closing, from another thread, the very handle the capture is parked reading.
+     * A read blocked in `forEachLine` — or in Odin's collector — surfaces that as
+     * `InterruptedIOException: read interrupted by close() on another thread`, not as EOF. That is
+     * the teardown working exactly as designed, but it used to reach the `catch` in [start] and
+     * print `E LogcatCapture: capture failed` with a full stack trace on *every* stop, which reads
+     * like a crash in a bug report. It also threw away the [CaptureMode] the capture had really
+     * run in, because the exception unwound past the point where that value is produced.
+     *
+     * The guard is deliberately narrow: without [stopping] set, an [IOException] here is a genuine
+     * read failure and still propagates.
+     */
+    private inline fun drainUntilClosed(block: () -> Unit) {
+        try {
+            block()
+        } catch (e: IOException) {
+            if (!stopping) throw e
+            Log.d(TAG, "capture stream closed by stop()")
+        }
+    }
+
     // --- READ_LOGS path -----------------------------------------------------------------------
 
     /**
-     * Capture with the READ_LOGS permission held directly. Every command is an argv list, so
-     * there is no shell to interpret [packageName] and no injection surface at all.
+     * Capture with the READ_LOGS permission held directly. An argv list, so there is no shell
+     * involved and nothing to quote.
+     *
+     * `-T 1` replaces what used to be a preceding `logcat -c`. There is only one logcat buffer and
+     * every reader on the device shares it, so clearing it to get a clean start threw away log
+     * data that belonged to everyone else — including, on a slow start, the first lines of the very
+     * capture the user asked for. `-T 1` begins one line back and destroys nothing.
+     *
+     * stderr is deliberately *not* folded into the capture. A user's log file should contain log
+     * lines; a diagnostic from our own tooling in the middle of it is corruption, and it is also
+     * how a permission failure would come to look like ordinary content.
      */
-    private fun captureWithReadLogs(packageName: String, outputFile: File) {
-        val pid = readPid(listOf("pidof", packageName))
-
-        // Start from "now" rather than replaying whatever was already buffered.
-        runCatching { ProcessBuilder("logcat", "-c").start().waitFor() }
-            .onFailure { Log.w(TAG, "logcat -c failed", it) }
-
-        val argv = if (pid != null) {
-            listOf("logcat", "--pid=$pid")
-        } else {
-            // Weak fallback: -s filters by log *tag*, which only matches apps that happen to tag
-            // with their package name. It is what we can do before the process exists.
-            Log.d(TAG, "no pid for $packageName; falling back to tag filter")
-            listOf("logcat", "-s", packageName)
-        }
-
-        val process = ProcessBuilder(argv).redirectErrorStream(true).start()
+    private fun captureWithReadLogs(uid: Int, outputFile: File) {
+        val process = ProcessBuilder("logcat", "-T", "1", "--uid=$uid").start()
         if (!adopt(process = process)) return
         try {
-            outputFile.bufferedWriter().use { writer ->
-                process.inputStream.bufferedReader().forEachLine { line -> writer.appendLog(line) }
+            drainUntilClosed {
+                outputFile.bufferedWriter().use { writer ->
+                    process.inputStream.bufferedReader()
+                        .forEachLine { line -> writer.appendLog(line) }
+                }
+                reportExit(process)
             }
         } finally {
             process.destroy()
         }
     }
 
-    private fun readPid(argv: List<String>): String? = runCatching {
-        val process = ProcessBuilder(argv).start()
-        val first = process.inputStream.bufferedReader().use { it.readLine() }
-        process.waitFor()
-        first.toPid()
-    }.getOrNull()
+    /**
+     * Rule 3: never assume a privileged command succeeded.
+     *
+     * A `logcat` refused the buffer, or handed an option this platform version does not know,
+     * exits immediately and non-zero — leaving a capture file that is merely *empty*, which is
+     * indistinguishable from a quiet app unless something says otherwise. Nothing did, and that
+     * cost a whole device session to find.
+     *
+     * stderr is drained here rather than concurrently, which in principle could block `logcat` on a
+     * full pipe. It does not in practice: what `logcat` writes there is a line or two immediately
+     * before exiting, not a running commentary, so the buffer is nowhere near the 64 KB it would
+     * take to stall.
+     */
+    private fun reportExit(process: Process) {
+        val code = process.waitFor()
+        if (code == 0 || stopping) return
+        val stderr = runCatching {
+            process.errorStream.bufferedReader().use { it.readText() }
+        }.getOrNull()?.trim().orEmpty()
+        Log.w(TAG, "logcat exited $code" + if (stderr.isEmpty()) "" else ": $stderr")
+    }
 
     // --- Root path ----------------------------------------------------------------------------
 
-    /** Capture through a dedicated root shell. */
-    private suspend fun captureWithRoot(packageName: String, outputFile: File) {
+    /**
+     * Capture through a dedicated root shell.
+     *
+     * The command is a fixed string plus an integer. Root previously got a different filter from
+     * the READ_LOGS path — `pidof` works under root, so this branch had a working pid lookup and a
+     * `logcat | grep -F -- <package>` fallback behind it — and that divergence is gone: the uid
+     * filter is correct under both privileges, so both run the same command and there is one
+     * behaviour to reason about rather than two. It also means AGENTS.md rule 1 stops depending on
+     * `escapeForShell`, because there is no longer any caller-supplied text in the string at all.
+     */
+    private suspend fun captureWithRoot(uid: Int, outputFile: File) {
         val shell = openRootShell() ?: return
         if (!adopt(shell = shell)) return
 
-        // AGENTS.md rule 1: never interpolate unvalidated input into a shell string. packageName
-        // comes from PackageManager today, but escaping it means that stays safe if it ever
-        // stops being ours.
-        val quoted = packageName.escapeForShell()
-
-        // A missing pid is normal (the app may not be running yet), not a failure.
-        val pidResult = shell.newJob().add("pidof $quoted").await()
-        val pid = pidResult.stdout.firstOrNull().toPid()
-
-        val clear = shell.newJob().add("logcat -c").await()
-        if (!clear.isSuccess) {
-            // Rule 3: don't assume a privileged command succeeded. Branch on the code, never on
-            // whether stderr happens to be populated.
-            Log.w(TAG, "logcat -c exited ${clear.code}: ${clear.stderr.joinToString("; ")}")
-        }
-
-        val command = if (pid != null) {
-            "logcat --pid=$pid"
-        } else {
-            // -F treats the package name as a literal (dots are regex wildcards otherwise) and
-            // `--` stops a name that begins with '-' being read as an option.
-            Log.d(TAG, "no pid for $packageName; falling back to a literal grep")
-            "logcat | grep -F -- $quoted"
-        }
-
-        outputFile.bufferedWriter().use { writer ->
-            shell.newJob().add(command).asFlow().collect { line ->
-                // logcat writes to stdout; anything on stderr is the shell complaining, and it
-                // belongs in our own log rather than mixed into the user's capture.
-                if (line.isError) Log.w(TAG, "logcat stderr: ${line.text}")
-                else writer.appendLog(line.text)
+        drainUntilClosed {
+            outputFile.bufferedWriter().use { writer ->
+                shell.newJob().add("logcat -T 1 --uid=$uid").asFlow().collect { line ->
+                    // logcat writes to stdout; anything on stderr is the shell complaining, and it
+                    // belongs in our own log rather than mixed into the user's capture.
+                    if (line.isError) Log.w(TAG, "logcat stderr: ${line.text}")
+                    else writer.appendLog(line.text)
+                }
             }
         }
     }
@@ -266,9 +324,3 @@ private fun BufferedWriter.appendLog(line: String) {
     newLine()
     flush()
 }
-
-/** First whitespace-separated token of `pidof` output, if it really is a pid. */
-private fun String?.toPid(): String? = this
-    ?.trim()
-    ?.substringBefore(' ')
-    ?.takeIf { it.isNotEmpty() && it.all(Char::isDigit) }
