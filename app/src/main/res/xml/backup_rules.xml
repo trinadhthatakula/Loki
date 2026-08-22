@@ -1,13 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+   Auto Backup rules for API 30 and below (`android:fullBackupContent`).
+
+   Backup is currently disabled outright — see `android:allowBackup="false"` and the reasoning above
+   it in AndroidManifest.xml. These rules are therefore not consulted today. They exist so that the
+   exclusion survives anyone turning backup back on: a captured log is other apps' logcat output and
+   must not leave the device, and Auto Backup includes all of `getFilesDir()` by default.
+
+   `logs/` is `SavedLogs.logsDir`, relative to `filesDir`. The two spellings have to agree.
+
+   Not listed, because Auto Backup never includes them in the first place: `getCacheDir()`, which is
+   where the live capture's temp file and the `log_shares/` zip staging live. If a future change moves
+   either of those into `filesDir`, it needs a line here.
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <exclude
+        domain="file"
+        path="logs/" />
 </full-backup-content>

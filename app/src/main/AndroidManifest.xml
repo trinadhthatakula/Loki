@@ -20,9 +20,28 @@
 
     <uses-permission android:name="android.permission.READ_LOGS" />
 
+    <!--
+      Backup is off, and that is a privacy decision rather than a default left alone.
+
+      Loki's `filesDir/logs/` holds other apps' logcat output — tokens, URLs, third parties' PII.
+      Auto Backup includes `getFilesDir()` unless told otherwise, so with backup on, a capture of
+      some banking app's log leaves the device for the user's Google account on the next backup
+      window, and is copied again by device-to-device transfer. Loki declares no INTERNET
+      permission, so backup was the *only* route by which a captured log could ever leave the
+      device — which is exactly what AGENTS.md rule 2 forbids ("nothing may send it anywhere the
+      user did not choose"), and it silently undid SavedLogs.kt's choice of filesDir on privacy
+      grounds.
+
+      What is given up is small and deliberate: the only other thing Loki persists is the theme in
+      DataStore. Three taps in Settings is a fair price for the guarantee.
+
+      The rule files are still referenced and now carry real `<exclude>` entries. They are dead
+      weight while `allowBackup` is false — belt and braces, so that anyone who turns backup back
+      on inherits the exclusions rather than re-discovering this the hard way.
+    -->
     <application
         android:name=".Loki"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/launch"
