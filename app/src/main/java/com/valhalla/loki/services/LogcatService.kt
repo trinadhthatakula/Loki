@@ -238,7 +238,6 @@ class LogcatService : Service() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         // Close the privileged handle before the scope goes away — cancelling the coroutine alone
         // would leave a root `logcat` running with nobody reading it. Unlike the previous version,
         // no user data depends on what runs after this point: the capture was written to its final
@@ -248,6 +247,10 @@ class LogcatService : Service() {
         _isRunning.value = false
         _currentLogFile.value = null
         serviceJob.cancel()
+        // Teardown first, super last — the mirror of onCreate. Inert as it stands, because
+        // Service.onDestroy() is empty, but it stops the ordering from being a thing a future reader
+        // has to check.
+        super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
