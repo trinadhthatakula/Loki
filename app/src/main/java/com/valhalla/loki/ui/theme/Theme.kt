@@ -154,18 +154,31 @@ private val darkScheme = darkColorScheme(
  * `surfaceContainer*` at its greys and every card, sheet and bottom bar floats *lighter* than the
  * page behind it, which is backwards. Flattened toward black but not all the way to it — absolute
  * black everywhere erases every elevation cue and cards stop having edges.
+ *
+ * **`surfaceContainerLow` is the one that must not be black.** It is `AsgardSectionCard`'s default
+ * container, and the card draws no border and no shadow, so setting it to `Color.Black` on a
+ * `Color.Black` page made the Settings cards disappear outright — the four groups read as one
+ * undivided list held together only by their titles. That contradicted the paragraph above, which is
+ * the whole reason `surfaceContainer` was already held off black.
+ *
+ * The steps are ~8% apart rather than the 4% they used to be, because on an OLED panel `#0A0A0A`
+ * against `#000000` is not reliably an edge — it is a guess at one. And the ladder is strictly
+ * monotonic: lifting `surfaceContainerLow` alone would have put it *above* `surfaceContainer`,
+ * making a bottom bar darker than a card floating over it, which is the same inversion in a new
+ * place. `surfaceContainerLowest` stays absolute black; it sits conceptually beneath the page, and
+ * it is the one slot where that is the right answer.
  */
 private fun ColorScheme.amoled(): ColorScheme = copy(
     background = Color.Black,
     surface = Color.Black,
     surfaceDim = Color.Black,
     surfaceContainerLowest = Color.Black,
-    surfaceContainerLow = Color.Black,
-    surfaceContainer = Color(0xFF0A0A0A),
-    surfaceVariant = Color(0xFF141414),
-    surfaceContainerHigh = Color(0xFF141414),
-    surfaceContainerHighest = Color(0xFF1F1F1F),
-    surfaceBright = Color(0xFF1F1F1F),
+    surfaceContainerLow = Color(0xFF0F0F0F),
+    surfaceContainer = Color(0xFF171717),
+    surfaceVariant = Color(0xFF171717),
+    surfaceContainerHigh = Color(0xFF1F1F1F),
+    surfaceContainerHighest = Color(0xFF292929),
+    surfaceBright = Color(0xFF292929),
 )
 
 @Composable
