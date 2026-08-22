@@ -57,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -244,10 +245,21 @@ private fun LogBody(
     // inside the frame loop below, so neither write recomposes anything.
     var listHeightPx by remember { mutableIntStateOf(0) }
     var pointerY by remember { mutableFloatStateOf(-1f) }
-    var isPointerDown by remember { mutableStateOf(false) }
 
-    LaunchedEffect(isPointerDown, listHeightPx) {
-        if (!isPointerDown || listHeightPx == 0) return@LaunchedEffect
+    // Gated on a *drag*, not on a press. Gating on "a pointer is down" meant a stationary finger
+    // resting anywhere in the 96 dp edge band scrolled the log on its own at up to 1,400 dp/s, and
+    // the way that actually bit was text selection: SelectionContainer needs a long press, so
+    // holding still near the bottom edge scrolled the target line out from under the finger during
+    // the half-second before the selection was even recognised, and the wrong text came out. A plain
+    // tap in the band nudged the list for no reason. Requiring touch slop to be exceeded costs the
+    // real gesture nothing — a selection drag passes slop immediately — and a still finger never
+    // does. It hid during testing because an ordinary scroll drag *also* passes slop, and there
+    // `scrollable` holds the scroll mutex at UserInput priority, so this loop's lower-priority
+    // scrollBy throws and kills the effect; only the motionless case survives to misbehave.
+    var isDragging by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isDragging, listHeightPx) {
+        if (!isDragging || listHeightPx == 0) return@LaunchedEffect
         val edgePx = with(density) { AUTO_SCROLL_EDGE.toPx() }
         val maxPxPerSecond = with(density) { AUTO_SCROLL_DP_PER_SECOND.dp.toPx() }
         var previousFrame = 0L
@@ -355,12 +367,27 @@ private fun LogBody(
                 // Observed on the Final pass so SelectionContainer's own gesture detector claims
                 // the events first; this only watches where the finger is, and consumes nothing.
                 .pointerInput(Unit) {
+                    val slop = viewConfiguration.touchSlop
                     awaitPointerEventScope {
+                        // Where the current press started, so movement can be measured against it.
+                        var pressOrigin: Offset? = null
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Final)
                             val change = event.changes.firstOrNull()
-                            pointerY = change?.position?.y ?: -1f
-                            isPointerDown = change?.pressed == true
+                            if (change == null || !change.pressed) {
+                                pressOrigin = null
+                                pointerY = -1f
+                                isDragging = false
+                                continue
+                            }
+                            pointerY = change.position.y
+                            val origin = pressOrigin
+                                ?: change.position.also { pressOrigin = it }
+                            if (!isDragging &&
+                                (change.position - origin).getDistance() > slop
+                            ) {
+                                isDragging = true
+                            }
                         }
                     }
                 },
