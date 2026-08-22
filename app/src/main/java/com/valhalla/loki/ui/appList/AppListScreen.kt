@@ -230,8 +230,12 @@ private fun LoggerBottomSheetContent(
 ) {
     val listState = rememberLazyListState()
 
-    // Auto-scroll to the bottom
-    LaunchedEffect(logLines.size) {
+    // Auto-scroll to the bottom.
+    //
+    // Keyed on the list, not on its size: the live tail is capped, so once it is saturated the size
+    // stops changing while the content keeps being replaced — and keying on size would have stopped
+    // following the log at exactly the point where following it matters.
+    LaunchedEffect(logLines) {
         if (logLines.isNotEmpty()) {
             listState.animateScrollToItem(logLines.size - 1)
         }
@@ -250,10 +254,20 @@ private fun LoggerBottomSheetContent(
         )
         LazyColumn(
             state = listState,
+            // No `weight(1f)`. In a Column, weight hands the child a fixed height — min and max both
+            // set to its share — and `heightIn` can only narrow the constraints it is given, so the
+            // 300 dp cap was silently discarded and this Column grew to the full screen. That in turn
+            // put the sheet's content over half the screen height, which is the condition
+            // ModalBottomSheet uses to create a PartiallyExpanded anchor and open there — so the
+            // sheet opened half-height with "Stop Logging" below the bottom of the screen, and the
+            // auto-scroll above parked the newest lines off-screen in the hidden half. With the cap
+            // actually applied the content stays under half the screen and the sheet opens fully.
+            //
+            // `min` as well as `max` so the sheet does not resize under the user's thumb as the
+            // first lines arrive.
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
-                .heightIn(max = 300.dp)
+                .heightIn(min = 200.dp, max = 300.dp)
                 .padding(vertical = 8.dp)
         ) {
             items(logLines) { line ->
