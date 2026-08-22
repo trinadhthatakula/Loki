@@ -145,13 +145,16 @@ and re-icon. This is not a restriction on your code freedoms; it exists so that 
 something called "Loki" knows where it came from, which matters more than usual for an app that
 reads other apps' logs. See [TRADEMARK.md](TRADEMARK.md).
 
-Loki bundles two fonts under the **SIL Open Font License 1.1**, which is GPL-compatible. The OFL
-requires the licence and the copyright notice to travel with the font, so each ships verbatim from
-upstream:
+Loki bundles two fonts under the **SIL Open Font License 1.1**. The OFL permits a font to be bundled
+with GPL software, but it does not relicense it: each font stays under the OFL, and only Loki's own
+code is GPL-3.0-or-later. Packagers should treat the two licences as travelling side by side rather
+than as one covering the other. The OFL requires the licence and the copyright notice to travel with
+the font, so each file below is byte-for-byte upstream — including its copyright line, which is the
+Copyright Holder's to word:
 
 - **Outfit** — Copyright 2021 The Outfit Project Authors
   ([upstream](https://github.com/Outfitio/Outfit-Fonts)) — [`licenses/OFL-1.1-Outfit.txt`](licenses/OFL-1.1-Outfit.txt)
-- **Fira Code** — Copyright 2014-2020 The Fira Code Project Authors
+- **Fira Code** — Copyright (c) 2014, The Fira Code Project Authors
   ([upstream](https://github.com/tonsky/FiraCode)) — [`licenses/OFL-1.1-FiraCode.txt`](licenses/OFL-1.1-FiraCode.txt)
 
 ## Mirrors
