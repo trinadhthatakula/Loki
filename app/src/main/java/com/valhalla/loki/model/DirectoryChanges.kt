@@ -84,15 +84,48 @@ private class ShallowTreeObserver(
         observers.clear()
     }
 
-    private fun onEvent() {
+    private fun onEvent(watched: File, event: Int) {
         // A new package directory needs its own observer before anything is written into it, and a
         // deleted one should stop being watched. Doing this here rather than on a timer is why the
         // watch stays correct for the whole life of the screen.
-        synchronized(lock) { if (watching) resync() }
+        synchronized(lock) {
+            if (watching) {
+                dropIfSelfGone(watched, event)
+                resync()
+            }
+        }
         onChange()
     }
 
+    /**
+     * Forgets the watch on [watched] when the event says its directory is no longer there.
+     *
+     * inotify watches an *inode*, not a path. When the watched directory is deleted or moved away
+     * the kernel drops the watch and reports `DELETE_SELF`/`MOVE_SELF` — and if something then
+     * recreates the same path, [observers] still holds the dead watch under that key, so [resync]
+     * sees the path as covered and never re-registers. Nothing further is ever reported for it.
+     *
+     * Settings → "Clear all logs" did precisely that: `deleteRecursively()` on the root followed by
+     * `mkdirs()`. The root's key never left the map, so Saved logs and the explorer stopped
+     * receiving events for the rest of the screen's life and only a manual refresh showed anything
+     * again. That call site now empties the root instead of replacing it, which keeps the inode
+     * stable; this is the general repair, for a deletion Loki did not perform — a root shell, or a
+     * file manager working through [LokiDocumentsProvider]
+     * [com.valhalla.loki.services.LokiDocumentsProvider].
+     */
+    private fun dropIfSelfGone(watched: File, event: Int) {
+        val self = FileObserver.DELETE_SELF or FileObserver.MOVE_SELF
+        if (event and self != 0) {
+            observers.remove(watched.absolutePath)?.stopWatching()
+        }
+    }
+
     private fun resync() {
+        // The root may be mid-recreation, and a FileObserver bound to a path that does not exist is
+        // a watch that never fires — with no later event to recover from, since the recovery is
+        // driven by events. Same one call `directoryChanges()` makes before starting, for the same
+        // reason: inotify cannot watch what is not there.
+        if (!root.exists()) root.mkdirs()
         val wanted = buildMap {
             put(root.absolutePath, root)
             root.listFiles()?.forEach { if (it.isDirectory) put(it.absolutePath, it) }
@@ -108,7 +141,8 @@ private class ShallowTreeObserver(
     private fun observerFor(dir: File): FileObserver =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             object : FileObserver(dir, WATCH_MASK) {
-                override fun onEvent(event: Int, path: String?) = this@ShallowTreeObserver.onEvent()
+                override fun onEvent(event: Int, path: String?) =
+                    this@ShallowTreeObserver.onEvent(dir, event)
             }
         } else {
             // FileObserver(File, Int) arrived in API 29. minSdk is 28, so on Android 9 the only
@@ -117,7 +151,8 @@ private class ShallowTreeObserver(
             // user on that release (§1.4). Deprecated is not the same as absent.
             @Suppress("DEPRECATION")
             object : FileObserver(dir.absolutePath, WATCH_MASK) {
-                override fun onEvent(event: Int, path: String?) = this@ShallowTreeObserver.onEvent()
+                override fun onEvent(event: Int, path: String?) =
+                    this@ShallowTreeObserver.onEvent(dir, event)
             }
         }
 }

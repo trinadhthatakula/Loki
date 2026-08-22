@@ -124,6 +124,13 @@ class SettingsViewModel(
      * so a partial failure looked like a success. It also raced an in-flight capture, which holds
      * an open writer into this very directory; that is now refused up front rather than left to
      * produce a half-deleted tree and a capture writing into a directory that no longer exists.
+     *
+     * It empties the directory rather than replacing it. Deleting the root and calling `mkdirs()`
+     * leaves the same *path* holding a different inode, and every `FileObserver` in
+     * [directoryChanges][com.valhalla.loki.model.directoryChanges] is bound to the inode — so the
+     * live watch behind Saved logs and the explorer died here and those screens stopped updating
+     * until they were reopened. `ShallowTreeObserver` now also repairs a watch it is told has gone,
+     * but not creating the problem is the cheaper half of the fix.
      */
     fun clearAllLogs() {
         if (logcatCapture.isCapturing) {
@@ -136,12 +143,13 @@ class SettingsViewModel(
             _uiState.update { it.copy(isClearing = true) }
             val result = withContext(Dispatchers.IO) {
                 if (!logsDir.exists()) return@withContext ClearResult.NOTHING_TO_DO
+                val children = logsDir.listFiles() ?: return@withContext ClearResult.FAILED
+                if (children.isEmpty()) return@withContext ClearResult.NOTHING_TO_DO
                 // deleteRecursively() reports false on partial failure, which is exactly the case
-                // the unconditional toast used to hide.
-                if (!logsDir.deleteRecursively()) return@withContext ClearResult.FAILED
-                // Recreated so anything listing the directory sees it empty rather than missing.
-                logsDir.mkdirs()
-                ClearResult.CLEARED
+                // the unconditional toast used to hide. Per child, and `fold` rather than `all`, so
+                // one stubborn file does not short-circuit the delete of everything after it.
+                val deleted = children.fold(true) { ok, child -> child.deleteRecursively() && ok }
+                if (!deleted) ClearResult.FAILED else ClearResult.CLEARED
             }
             _uiState.update { it.copy(isClearing = false) }
             _messages.tryEmit(
