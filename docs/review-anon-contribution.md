@@ -397,6 +397,10 @@ preferencesDataStore(name = "settings")` at top level is the right pattern, one 
 **Accept** — with `amoledFlow` defaulting to `false`, not `true`, and registered as
 `singleOf(::ThemeManager)` to match `Modules.kt` style.
 
+> Paths in this section are the **anonymous drop's** layout, not Loki's. Loki has no `data/` package
+> (see `CLAUDE.md` — there is deliberately no Clean Architecture split here), so on integration this
+> file landed at `app/src/main/java/com/valhalla/loki/model/ThemeManager.kt`.
+
 `ThemePreference.kt` — **reject**. It stores the same setting a second time in SharedPreferences
 under different values ("light"/"dark"/"system" vs "Light Mode"/…), and calls
 `AppCompatDelegate.setDefaultNightMode`, which does **nothing** here: `MainActivity` is a
