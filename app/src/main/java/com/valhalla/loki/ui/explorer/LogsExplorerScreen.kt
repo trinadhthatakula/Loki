@@ -327,6 +327,9 @@ private fun ExplorerRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
+    // Named once because both gestures below share it, which is the point: while selecting, tap and
+    // long press both run `toggleSelection`, so they cannot honestly be labelled differently.
+    val toggleLabel = if (selected) "Deselect" else "Select"
     ListItem(
         // combinedClickable rather than ListItem's own onClick, because the row needs a long press
         // as well and that overload takes only the one. Long-press-to-select is the idiom every
@@ -337,13 +340,18 @@ private fun ExplorerRow(
         // it does, on a screen where nothing else advertises that selecting is possible. The click
         // label varies because the same tap opens a directory, opens a log, or toggles a selection
         // depending on where you are.
+        //
+        // Once selecting, the two labels agree because the two gestures do: `onLongClick` is the same
+        // `toggleSelection` the tap runs, so a long press on an already-selected row *deselects* it.
+        // Saying "Select" there would announce the opposite of what happens, which is worse than
+        // saying nothing — a label is only worth adding while it stays true.
         modifier = Modifier.combinedClickable(
             onClickLabel = when {
-                selecting -> if (selected) "Deselect" else "Select"
+                selecting -> toggleLabel
                 entry.isDirectory -> "Open folder"
                 else -> "Open log"
             },
-            onLongClickLabel = if (selecting) "Select" else "Start selecting",
+            onLongClickLabel = if (selecting) toggleLabel else "Start selecting",
             onClick = onClick,
             onLongClick = onLongClick,
         ),
