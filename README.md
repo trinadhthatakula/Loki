@@ -50,7 +50,7 @@ secrets. So Loki borrows the privilege instead:
 
 | Path | What you need | Notes |
 |---|---|---|
-| **Root** | Magisk, KernelSU or APatch | Loki runs its capture through a root shell (libsu). |
+| **Root** | Magisk, KernelSU or APatch | Loki runs its capture through a root shell (Odin). |
 | **Shizuku** | [Shizuku](https://shizuku.rikka.app/) running | No root needed. Pair over wireless debugging or ADB; survives until reboot. |
 | Neither | — | Loki can only read its own logs. Not useful. |
 
@@ -126,7 +126,7 @@ Contributions are welcome, including small ones.
 - [**AGENTS.md**](AGENTS.md) / [**CLAUDE.md**](CLAUDE.md) — the same rules, for AI agents
 
 The short version: branch from `dev`, open your PR against `dev`, don't bump `versionCode`, and if
-you touch the privileged surface (`model/SuCli.kt`, `model/PermissionManager.kt`,
+you touch the privileged surface (`model/PermissionManager.kt`, `model/LogcatCapture.kt`,
 `services/LogcatService.kt`) say which privilege mode you actually tested under.
 
 ## Security

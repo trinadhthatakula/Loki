@@ -43,7 +43,9 @@ All contributors and AI agents follow this workflow:
 | Language | Kotlin, 100% |
 | UI | Jetpack Compose + Material 3 (expressive APIs opted in) |
 | DI | [Koin](https://insert-koin.io) — plain module DSL in `app/src/main/java/com/valhalla/loki/di/Modules.kt`, not Koin Annotations |
-| Root | [libsu](https://github.com/topjohnwu/libsu) (`com.github.topjohnwu.libsu:core`) |
+| Navigation | Navigation 3 (`navigation3-runtime` / `-ui`), routes in `ui/navigation/LokiRoute.kt` |
+| Components | Asgard UI (`com.trinadhthatakula:asgard`) — also what sets `minSdk 28` |
+| Root | Odin (`com.trinadhthatakula:odin`), injected as `ShellRepository` |
 | Shizuku | `dev.rikka.shizuku:api` + `:provider` |
 | Serialization | `kotlinx.serialization` |
 | JDK | **21** (Zulu, to match CI) |
@@ -59,19 +61,26 @@ app/src/main/java/com/valhalla/loki/
 ├── Loki.kt              ← Application class, Koin start-up
 ├── MainActivity.kt
 ├── di/Modules.kt        ← the single Koin module
-├── model/               ← AppInfo, AppInfoGrabber, SavedLogs, SuCli, PermissionManager, …
-├── services/            ← LogcatService (foreground service, dataSync)
+├── model/               ← AppInfo, AppInfoGrabber, SavedLogs, LogcatCapture, PermissionManager, …
+├── services/            ← LogcatService (foreground service, dataSync), LokiDocumentsProvider
 └── ui/
-    ├── home/            ← HomeScreen + HomeViewModel
+    ├── navigation/      ← LokiRoute (the NavKey surface) + NavItem (bottom-bar items)
+    ├── home/            ← HomeScreen + HomeViewModel — the shell: bottom bar over one NavDisplay
     ├── appList/         ← AppListScreen + AppListViewModel
     ├── onboarding/      ← OnboardingScreen + OnboardingViewModel
-    ├── saved/           ← SavedLogsScreen + SavedLogsViewModel
+    ├── saved/           ← SavedLogsScreen + SavedLogsViewModel, LogViewerScreen + ViewModel
+    ├── explorer/        ← LogsExplorerScreen + LogsExplorerViewModel
+    ├── settings/        ← SettingsScreen + SettingsViewModel
     ├── theme/           ← Color / Theme / Type
-    └── widgets/         ← TermLogger and other shared composables
+    └── widgets/         ← Formatting and other shared composables
 ```
 
 One package per screen, each holding its `*Screen.kt` and its `*ViewModel.kt`. New screens follow
 the same shape.
+
+A new screen needs three things, none of them automatic: a `LokiRoute` entry, an `entry<…> { }` in
+`HomeScreen`'s `entryProvider`, and a Koin line in `Modules.kt`. There is no component scan and no
+route generation — annotating a class does nothing here.
 
 ### The privileged surface — read this before touching it
 
@@ -79,15 +88,18 @@ Loki reads **other applications'** logcat output. That needs `android.permission
 is `signature|privileged` and therefore **not grantable to a normal app** by the user. Loki gets it
 one of two ways:
 
-- **Root** — a shell via libsu (`model/SuCli.kt`).
+- **Root** — a shell via Odin, injected as `com.valhalla.superuser.ktx.ShellRepository`.
 - **Shizuku** — an ADB-privileged process via `rikka.shizuku`.
 
-That makes every change in `model/SuCli.kt`, `model/PermissionManager.kt` and
+That makes every change in `model/PermissionManager.kt`, `model/LogcatCapture.kt` and
 `services/LogcatService.kt` security-relevant. A command assembled from a package name that came
 from anywhere but `PackageManager` is a shell-injection surface. When you change one of these:
 
 - Say in the PR which privilege mode(s) you tested under — **Root**, **Shizuku**, or **neither**.
 - Never interpolate unvalidated user input into a shell string.
+- Take the `ShellRepository` interface from Koin rather than constructing a shell inline, so the
+  privileged surface stays swappable in a test and countable by grep.
+- Never assume a privileged command succeeded — check the exit code.
 - Treat a captured log as sensitive data. Logcat carries tokens, URLs and PII; nothing in Loki may
   send it anywhere the user did not choose.
 
