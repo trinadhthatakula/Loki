@@ -1,0 +1,5 @@
+Loki grants itself READ_LOGS now if you have root or Shizuku. No terminal, no ADB cable.
+
+New: a saved-log viewer with level filters and search, a file explorer with bulk delete and zip-share, a Settings screen, and light / dark / AMOLED / Material You themes.
+
+Fixed: capture no longer claims root without checking, logs are filtered by uid, Auto Backup is off so captures cannot leave the device, and the file provider is confined to the logs directory.
