@@ -40,6 +40,20 @@ class MainActivity : ComponentActivity() {
         val splashScreen = installSplashScreen()
         enableEdgeToEdge()
 
+        // Registered once for the Activity's lifetime, and removed in onDestroy. Shizuku holds
+        // these in static ArrayLists and adds without de-duplicating, so registering them inside
+        // the button handler — as this did — added another copy of all three, and leaked another
+        // Activity, on every tap and every rotation.
+        //
+        // Sticky is the load-bearing word. ShizukuProvider delivers the binder during application
+        // startup, so by the time any Activity exists `onBinderReceived` has already fired; the
+        // plain addBinderReceivedListener only fires on a *later* one and would sit there dead
+        // forever. That is precisely what silently broke the grant: the flag it set was never set,
+        // so the grant was never issued and nothing was logged.
+        Shizuku.addBinderReceivedListenerSticky(shizukuBinderReceivedListener)
+        Shizuku.addBinderDeadListener(shizukuBinderDeadListener)
+        Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
+
         // DataStore answers asynchronously, so the first composition would otherwise paint the
         // DEFAULT theme and flip to the stored one a frame or two later — a visible flash on every
         // cold start for anyone who is not on the defaults. Holding the splash costs nothing (it is
@@ -95,100 +109,129 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onDestroy() {
+        Shizuku.removeBinderReceivedListener(shizukuBinderReceivedListener)
+        Shizuku.removeBinderDeadListener(shizukuBinderDeadListener)
+        Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
+        super.onDestroy()
+    }
+
+    /**
+     * Set while the user is actually waiting on a Shizuku grant.
+     *
+     * Shizuku's callbacks are process-wide and fire for reasons that have nothing to do with a
+     * button press — restarting the Shizuku app raises `onBinderReceived` on its own — so without
+     * this, resuming the request from a listener would run a privileged `pm grant` nobody asked
+     * for.
+     */
+    private var shizukuGrantPending = false
+
     private fun requestShizuku() {
         // isRootAvailable() suspends — a root probe must not run on the main thread.
         lifecycleScope.launch {
             try {
                 if (permissionManager.isRootAvailable()) {
-                    Log.d(TAG, "checkShizukuPermission: root found")
+                    Log.d(TAG, "root available; no Shizuku grant needed")
                     return@launch
                 }
 
-                if (packages.getApplicationInfoOrNull("moe.shizuku.privileged.api") == null) {
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Shizuku is not installed, please install it and try again.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                if (packages.getApplicationInfoOrNull(SHIZUKU_PACKAGE) == null) {
+                    toast("Shizuku is not installed, please install it and try again.")
                     return@launch
                 }
 
-                Shizuku.addBinderReceivedListener(shizukuBinderReceivedListener)
-                Shizuku.addBinderDeadListener(shizukuBinderDeadListener)
-                Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
-                Log.d(TAG, "root not found trying shizuku")
-                if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
-                    Shizuku.requestPermission(SHIZUKU_REQUEST_CODE)
-                } else {
-                    requestReadLogs()
+                shizukuGrantPending = true
+                if (!Shizuku.pingBinder()) {
+                    // Installed but not running. The request is deliberately left pending: the
+                    // sticky listener picks it back up if the user starts Shizuku and returns.
+                    toast("Shizuku is installed but not running. Start it, then try again.")
+                    return@launch
                 }
+                continueShizukuGrant()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
-    private fun requestReadLogs() {
-        if (shizukuBound)
-            grantReadLogs()
-        else {
-            onShizukuChange = {
-                if (shizukuBound)
-                    grantReadLogs()
+                shizukuGrantPending = false
+                Log.w(TAG, "Shizuku request failed", e)
             }
         }
     }
 
     /**
-     * Runs the actual `pm grant`. The result is surfaced rather than discarded — a privileged
-     * command that silently failed is the worst of both worlds.
+     * Second half of [requestShizuku] — reached directly when Shizuku is already up, or from
+     * [shizukuBinderReceivedListener] once it arrives.
+     */
+    private fun continueShizukuGrant() {
+        try {
+            if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
+                grantReadLogs()
+                return
+            }
+            if (Shizuku.shouldShowRequestPermissionRationale()) {
+                // Shizuku's own "denied, and do not ask again". requestPermission() would return
+                // denied without drawing anything, so explain it instead of appearing to do
+                // nothing.
+                shizukuGrantPending = false
+                toast("Loki was denied Shizuku access. Allow it in the Shizuku app, then retry.")
+                return
+            }
+            Shizuku.requestPermission(SHIZUKU_REQUEST_CODE) // resumes in the permission listener
+        } catch (e: Exception) {
+            shizukuGrantPending = false
+            Log.w(TAG, "Shizuku grant could not be started", e)
+        }
+    }
+
+    /**
+     * Runs the actual `pm grant`.
+     *
+     * There is no success toast, because there is nobody left to show one to: granting
+     * `READ_LOGS` kills this process (see `PermissionManager.grantReadLogsViaShizuku`), which
+     * then restarts itself from the Shizuku shell. Reaching the toast below at all means the
+     * grant failed and we survived to say so.
      */
     private fun grantReadLogs() {
+        shizukuGrantPending = false
         lifecycleScope.launch {
-            val granted = permissionManager.grantReadLogsViaShizuku()
-            Toast.makeText(
-                this@MainActivity,
-                if (granted) "READ_LOGS granted via Shizuku."
-                else "Shizuku could not grant READ_LOGS.",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-    }
-
-    private var shizukuBound = false
-    private var onShizukuChange: (() -> Unit)? = null
-
-    val shizukuBinderDeadListener = Shizuku.OnBinderDeadListener {
-        shizukuBound = false
-        onShizukuChange?.invoke()
-    }
-
-    val shizukuBinderReceivedListener = Shizuku.OnBinderReceivedListener {
-        shizukuBound = true
-        onShizukuChange?.invoke()
-    }
-
-    val shizukuPermissionListener =
-        Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
-            if (requestCode == SHIZUKU_REQUEST_CODE) {
-                if (grantResult == PackageManager.PERMISSION_GRANTED) {
-                    Log.d(TAG, "Shizuku permission granted")
-                    requestReadLogs()
-                } else {
-                    Log.d(TAG, "Shizuku permission denied")
-                    Toast.makeText(
-                        this,
-                        "Shizuku permission denied, please grant it and try again.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
+            if (!permissionManager.grantReadLogsViaShizuku()) {
+                toast("Shizuku could not grant READ_LOGS.")
             }
         }
+    }
+
+    private val shizukuBinderReceivedListener = Shizuku.OnBinderReceivedListener {
+        if (shizukuGrantPending) continueShizukuGrant()
+    }
+
+    private val shizukuBinderDeadListener = Shizuku.OnBinderDeadListener {
+        // Nothing to undo. Shizuku.pingBinder() is the source of truth everywhere it is needed,
+        // so there is no cached "bound" flag here left to go stale — which is what the previous
+        // version got wrong. A request that is still pending simply waits for the next
+        // onBinderReceived.
+        Log.d(TAG, "Shizuku binder died")
+    }
+
+    private val shizukuPermissionListener =
+        Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+            if (requestCode != SHIZUKU_REQUEST_CODE || !shizukuGrantPending) {
+                return@OnRequestPermissionResultListener
+            }
+            if (grantResult == PackageManager.PERMISSION_GRANTED) {
+                Log.d(TAG, "Shizuku permission granted")
+                grantReadLogs()
+            } else {
+                Log.d(TAG, "Shizuku permission denied")
+                shizukuGrantPending = false
+                toast("Shizuku permission denied, please grant it and try again.")
+            }
+        }
+
+    private fun toast(message: String) =
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 
     private companion object {
         private const val TAG = "MainActivity"
         private const val SHIZUKU_REQUEST_CODE = 1001
+        private const val SHIZUKU_PACKAGE = "moe.shizuku.privileged.api"
     }
 }

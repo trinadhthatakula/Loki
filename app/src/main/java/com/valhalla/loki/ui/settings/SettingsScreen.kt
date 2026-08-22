@@ -124,6 +124,7 @@ fun SettingsScreen(
     var showLicenceSheet by remember { mutableStateOf(false) }
     var showThanksSheet by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
+    var showShizukuConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.messages.collect { message ->
@@ -219,7 +220,9 @@ fun SettingsScreen(
                         },
                         icon = Icons.Filled.Key,
                         enabled = privilege != null && !privilege.readLogsGranted,
-                        onClick = onRequestShizuku,
+                        // Confirmed rather than immediate, because a successful grant closes
+                        // Loki — see the dialog below.
+                        onClick = { showShizukuConfirm = true },
                     )
                     AsgardSettingRow(
                         title = "Copy ADB command",
@@ -464,6 +467,29 @@ fun SettingsScreen(
             onConfirm = {
                 viewModel.clearAllLogs()
                 showClearConfirm = false
+            },
+        )
+    }
+
+    if (showShizukuConfirm) {
+        // Warning up front, because the alternative is worse than a dialog: READ_LOGS is a
+        // `development` permission, so the platform kills Loki the moment it is granted, and an
+        // app that vanishes when you tap a button reads as a crash. Loki cannot dodge the kill or
+        // restart itself around it — the Shizuku shell that runs the grant is torn down with us
+        // (the reasoning, and the two attempts that failed on device, are in
+        // PermissionManager.grantReadLogsViaShizuku).
+        AsgardDialogScaffold(
+            onDismissRequest = { showShizukuConfirm = false },
+            title = "Grant READ_LOGS and close Loki?",
+            text = "Android closes an app when its permissions change, so Loki will shut down as " +
+                "soon as the grant lands. That is expected, not a crash. Reopen Loki afterwards " +
+                "and it will be able to read other apps' logs.",
+            icon = Icons.Filled.Key,
+            confirmText = "Grant and close",
+            dismissText = "Cancel",
+            onConfirm = {
+                showShizukuConfirm = false
+                onRequestShizuku()
             },
         )
     }
