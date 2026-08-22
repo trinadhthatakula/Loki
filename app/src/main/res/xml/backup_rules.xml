@@ -8,9 +8,13 @@
 
    `logs/` is `SavedLogs.logsDir`, relative to `filesDir`. The two spellings have to agree.
 
-   Not listed, because Auto Backup never includes them in the first place: `getCacheDir()`, which is
-   where the live capture's temp file and the `log_shares/` zip staging live. If a future change moves
-   either of those into `filesDir`, it needs a line here.
+   Not listed, because Auto Backup never includes it in the first place: `getCacheDir()`, which is
+   where the `log_shares/` zip staging lives (`shareCacheDir`, `SavedLogs.kt`). If a future change
+   moves that into `filesDir`, it needs a line here.
+
+   The live capture needs no line of its own. It writes straight into `logs/` as it captures — there
+   is no scratch copy anywhere else, as there was when this rule file was written — so the single
+   `<exclude>` below already covers a capture in progress.
 -->
 <full-backup-content>
     <exclude

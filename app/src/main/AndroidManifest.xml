@@ -27,10 +27,12 @@
       Auto Backup includes `getFilesDir()` unless told otherwise, so with backup on, a capture of
       some banking app's log leaves the device for the user's Google account on the next backup
       window, and is copied again by device-to-device transfer. Loki declares no INTERNET
-      permission, so backup was the *only* route by which a captured log could ever leave the
-      device — which is exactly what AGENTS.md rule 2 forbids ("nothing may send it anywhere the
-      user did not choose"), and it silently undid SavedLogs.kt's choice of filesDir on privacy
-      grounds.
+      permission, so backup was the only route by which a captured log could leave the device
+      *without the user asking for it*. Sharing and exporting a log are still there and still
+      work — that is the whole distinction AGENTS.md rule 2 draws: nothing may send a log
+      "anywhere the user did not choose", and an automatic upload to an account is precisely a
+      destination they did not choose. It also silently undid SavedLogs.kt's choice of filesDir
+      on privacy grounds.
 
       What is given up is small and deliberate: the only other thing Loki persists is the theme in
       DataStore. Three taps in Settings is a fair price for the guarantee.
