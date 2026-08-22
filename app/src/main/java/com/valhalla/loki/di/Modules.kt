@@ -11,6 +11,7 @@ import com.valhalla.loki.model.logsDir
 import com.valhalla.loki.ui.appList.AppListViewModel
 import com.valhalla.loki.ui.home.HomeViewModel
 import com.valhalla.loki.ui.onboarding.OnboardingViewModel
+import com.valhalla.loki.ui.saved.LogViewerViewModel
 import com.valhalla.loki.ui.saved.SavedLogsViewModel
 import com.valhalla.loki.ui.settings.SettingsViewModel
 import com.valhalla.superuser.ktx.RealShellRepository
@@ -27,6 +28,7 @@ import org.koin.dsl.module
 var appModules = module {
     // Odin's root shell. Bound as the interface so tests and previews can swap it.
     singleOf(::RealShellRepository) bind ShellRepository::class
+    single { androidContext().contentResolver }
     singleOf(::Packages)
     singleOf(::AppInfoGrabber)
     singleOf(::PermissionManager)
@@ -44,6 +46,15 @@ var appModules = module {
         SavedLogsViewModel(
             logsDir = get<Context>().logsDir,
             appInfoGrabber = get(),
+        )
+    }
+    // One instance per file, so the file is an injected parameter rather than a binding. The
+    // ContentResolver is bound below instead of a Context, which keeps the export path testable
+    // without an Android framework mock.
+    viewModel { parameters ->
+        LogViewerViewModel(
+            file = parameters.get(),
+            contentResolver = get(),
         )
     }
     viewModel {

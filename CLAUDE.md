@@ -126,10 +126,11 @@ com/valhalla/loki/
   ui/
     home/            ← HomeScreen + HomeViewModel
     appList/         ← AppListScreen + AppListViewModel
-    saved/           ← SavedLogsScreen + SavedLogsViewModel
+    saved/           ← SavedLogsScreen + SavedLogsViewModel, LogViewerScreen + LogViewerViewModel
     onboarding/      ← OnboardingScreen + OnboardingViewModel  (privilege setup lives here)
+    settings/        ← SettingsScreen + SettingsViewModel
     theme/           ← Color, Theme, Type
-    widgets/         ← TermLogger (the terminal-style log view)
+    widgets/         ← Formatting (shared byte/count formatters)
 ```
 
 Plain screen + ViewModel pairs, Compose throughout. **Not** Thor's Clean Architecture split — there

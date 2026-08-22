@@ -14,3 +14,11 @@ fun formatBytes(bytes: Long): String = when {
     bytes < 1_024 * 1_024 -> String.format(Locale.getDefault(), "%.1f KB", bytes / 1_024.0)
     else -> String.format(Locale.getDefault(), "%.1f MB", bytes / (1_024.0 * 1_024.0))
 }
+
+/**
+ * A line count with the reader's own grouping separator: `20,000` here, `20 000` in fr, `20,000` in
+ * hi-IN's lakh grouping.
+ *
+ * Log viewers deal in five- and six-digit counts, and `143912` is unreadable at a glance.
+ */
+fun formatCount(count: Int): String = String.format(Locale.getDefault(), "%,d", count)

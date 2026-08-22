@@ -33,11 +33,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.valhalla.loki.R
 import com.valhalla.loki.model.Packages
+import com.valhalla.loki.ui.theme.monoFontFamily
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -193,7 +193,10 @@ private fun AdbCard() {
                 ) {
                     Text(
                         text = adbCommand,
-                        fontFamily = FontFamily.Monospace,
+                        // Fira Code, so the ADB command a user is about to retype by hand renders in
+                        // a face that distinguishes 0/O and 1/l/I. FontFamily.Monospace would leave
+                        // that to whatever the device happens to ship.
+                        fontFamily = monoFontFamily,
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = {

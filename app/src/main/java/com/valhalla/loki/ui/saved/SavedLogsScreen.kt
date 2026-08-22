@@ -83,6 +83,22 @@ fun SavedLogsScreen(
     // leaving composition, which is exactly what happens when the list is scrolled or reloaded.
     var expanded by rememberSaveable { mutableStateOf<Set<String>>(emptySet()) }
     var pendingDelete by remember { mutableStateOf<SavedLog?>(null) }
+    // The path rather than the File, because rememberSaveable's default saver takes a String and
+    // survives process death, which a File does not.
+    var openLogPath by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // The viewer takes over the tab rather than opening as its own destination, because Loki still
+    // navigates by pager. Step 9 makes it a route; nothing here has to change for that beyond
+    // deleting these four lines.
+    val openPath = openLogPath
+    if (openPath != null) {
+        LogViewerScreen(
+            logFile = File(openPath),
+            onBack = { openLogPath = null },
+            modifier = modifier,
+        )
+        return
+    }
 
     LaunchedEffect(Unit) {
         viewModel.messages.collect { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
@@ -144,6 +160,7 @@ fun SavedLogsScreen(
                             onToggle = { pkg ->
                                 expanded = if (pkg in expanded) expanded - pkg else expanded + pkg
                             },
+                            onView = { openLogPath = it.file.absolutePath },
                             onOpen = { context.openLog(it.file) },
                             onShare = { context.shareLog(it.file) },
                             onDelete = { pendingDelete = it },
@@ -176,6 +193,7 @@ private fun SavedLogsList(
     apps: List<LoggedApp>,
     expanded: Set<String>,
     onToggle: (String) -> Unit,
+    onView: (SavedLog) -> Unit,
     onOpen: (SavedLog) -> Unit,
     onShare: (SavedLog) -> Unit,
     onDelete: (SavedLog) -> Unit,
@@ -222,6 +240,7 @@ private fun SavedLogsList(
                     LogRow(
                         savedLog = savedLog,
                         label = dateFormat.format(Date(savedLog.timestamp)),
+                        onView = { onView(savedLog) },
                         onOpen = { onOpen(savedLog) },
                         onShare = { onShare(savedLog) },
                         onDelete = { onDelete(savedLog) },
@@ -239,6 +258,7 @@ private fun SavedLogsList(
 private fun LogRow(
     savedLog: SavedLog,
     label: String,
+    onView: () -> Unit,
     onOpen: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
@@ -249,7 +269,9 @@ private fun LogRow(
         title = label,
         subtitle = formatBytes(savedLog.sizeBytes),
         icon = Icons.AutoMirrored.Filled.Article,
-        onClick = onOpen,
+        // Tapping the row reads the log in Loki; "Open with…" hands it to another app. Both used to
+        // be the system chooser, because there was nothing in Loki that could read a log.
+        onClick = onView,
         // Indented under its app, and left of the overflow button rather than under it.
         contentPadding = PaddingValues(start = 32.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         titleStyle = MaterialTheme.typography.bodyMedium,

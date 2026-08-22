@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.valhalla.loki.model.LogLevel
 
 /**
  * The resolved **in-app** dark flag.
@@ -40,6 +41,41 @@ val LocalDarkTheme = staticCompositionLocalOf { false }
 val ColorScheme.success: Color
     @Composable @ReadOnlyComposable
     get() = if (LocalDarkTheme.current) SuccessDark else SuccessLight
+
+/**
+ * The colour a logcat priority draws in.
+ *
+ * Same reasoning as [success]: [ColorScheme] has no slot for this, and the one decision — which half
+ * of each light/dark pair applies — belongs here rather than at every call site.
+ *
+ * [LogLevel.UNKNOWN] returns `onSurface`, so separators and blank lines look like ordinary text
+ * instead of being assigned a priority they do not have. Dynamic colour is deliberately *not*
+ * honoured: a wallpaper-derived palette has no error/warning axis, and remapping priorities onto it
+ * would mean a warning and an error could come out the same hue.
+ */
+@Composable
+@ReadOnlyComposable
+fun ColorScheme.logLevelColor(level: LogLevel): Color = if (LocalDarkTheme.current) {
+    when (level) {
+        LogLevel.VERBOSE -> LogVerboseDark
+        LogLevel.DEBUG -> LogDebugDark
+        LogLevel.INFO -> LogInfoDark
+        LogLevel.WARN -> LogWarnDark
+        LogLevel.ERROR -> LogErrorDark
+        LogLevel.FATAL -> LogFatalDark
+        LogLevel.UNKNOWN -> onSurface
+    }
+} else {
+    when (level) {
+        LogLevel.VERBOSE -> LogVerboseLight
+        LogLevel.DEBUG -> LogDebugLight
+        LogLevel.INFO -> LogInfoLight
+        LogLevel.WARN -> LogWarnLight
+        LogLevel.ERROR -> LogErrorLight
+        LogLevel.FATAL -> LogFatalLight
+        LogLevel.UNKNOWN -> onSurface
+    }
+}
 
 private val lightScheme = lightColorScheme(
     primary = LightPrimary,

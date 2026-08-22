@@ -93,3 +93,31 @@ val LightSurfaceContainerHighest = Color(0xFFE1E1E5)
 // so it covers the other half.
 val SuccessLight = Color(0xFF005C32)         // 7.75:1 on LightSurface
 val SuccessDark = Color(0xFF7BDBA6)          // 10.38:1 on Surface, 12.53:1 on AMOLED black
+
+// --- LOG LEVELS ---
+// One pair per logcat priority, for the log viewer. Read them through ColorScheme.logLevelColor()
+// in Theme.kt, never directly, so AMOLED and light both get the right half.
+//
+// The contribution hardcoded a single set — Color(0xFFD32F2F) for error, Color(0xFF1976D2) for
+// debug and so on — which are Material *500* swatches picked for a light background. On Loki's dark
+// surface D32F2F is 3.62:1 and 1976D2 is 3.08:1: both fail AA for body text, on the one screen in
+// the app that is nothing but body text.
+//
+// Every value below clears 4.5:1 on every surface it can land on, and the band is kept deliberately
+// narrow (roughly 6:1 to 12:1) so that no priority reads as louder than another purely because it
+// happens to be brighter. Verbose is the dimmest of the set on purpose — it is the noise level.
+// Info, Error and Fatal reuse the scheme's own primary/error/tertiary values rather than
+// introducing near-duplicates of them.
+val LogVerboseDark = Color(0xFF9E9E9E)       //  6.50:1 on Surface,  7.84:1 on AMOLED black
+val LogDebugDark = Color(0xFF82B1FF)         //  8.02:1 on Surface,  9.68:1 on AMOLED black
+val LogInfoDark = Color(0xFF7BDBA6)          // 10.38:1 on Surface, 12.53:1 on AMOLED black
+val LogWarnDark = Color(0xFFFFC947)          // 11.35:1 on Surface, 13.70:1 on AMOLED black
+val LogErrorDark = Color(0xFFFFB4AB)         // 10.25:1 on Surface, 12.37:1 on AMOLED black
+val LogFatalDark = Color(0xFFD3BBF0)         // 10.06:1 on Surface, 12.14:1 on AMOLED black
+
+val LogVerboseLight = Color(0xFF5F5F63)      //  6.05:1 on LightSurface
+val LogDebugLight = Color(0xFF0B4F91)        //  7.86:1 on LightSurface
+val LogInfoLight = Color(0xFF005C32)         //  7.75:1 on LightSurface
+val LogWarnLight = Color(0xFF6E4600)         //  7.87:1 on LightSurface
+val LogErrorLight = Color(0xFFBA1A1A)        //  6.14:1 on LightSurface
+val LogFatalLight = Color(0xFF5C3A7A)        //  8.53:1 on LightSurface

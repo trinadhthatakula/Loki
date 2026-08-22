@@ -41,11 +41,11 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import com.valhalla.loki.R
 import com.valhalla.loki.model.getAppIcon
+import com.valhalla.loki.ui.theme.monoFontFamily
 import org.koin.androidx.compose.koinViewModel
 import java.io.File
 
@@ -259,7 +259,10 @@ private fun LoggerBottomSheetContent(
             items(logLines) { line ->
                 Text(
                     text = line,
-                    fontFamily = FontFamily.Monospace,
+                    // The bundled Fira Code, not FontFamily.Monospace — that resolves to whatever
+                    // the device calls monospace, which on most Android builds is Droid Sans Mono
+                    // and does not match the rest of the app's log surfaces.
+                    fontFamily = monoFontFamily,
                     style = MaterialTheme.typography.bodySmall
                 )
             }
