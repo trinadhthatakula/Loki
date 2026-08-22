@@ -7,7 +7,7 @@ For *writing* the release notes themselves, see
 [`release-notes/README.md`](../release-notes/README.md) — this document covers the routing, that one
 covers the content.
 
-Loki's model is [Thor's](https://github.com/trinadhthatakula/Thor/blob/master/docs/branching-and-releases.md)
+Loki's model is [Thor's](https://github.com/trinadhthatakula/Thor/blob/dev/docs/branching-and-releases.md)
 with one rung removed. Thor has three branches because it has three Google Play tracks to feed;
 Loki has no Play listing yet, so it has two. The shared implementation is written so a third rung is
 an added caller, not a rewrite — see *[Adding a rung](#adding-a-rung)*.
@@ -240,8 +240,8 @@ git push origin dev
 git rev-list --count origin/master ^dev   # expect 0
 ```
 
-This push goes directly to `dev`, which the `DevRules` ruleset permits through a repository-role
-bypass. It is the one and only exception to "never push directly to `dev`".
+This push goes directly to `dev`, which the `dev_branch_protector` ruleset permits through a
+repository-role bypass. It is the one and only exception to "never push directly to `dev`".
 
 ---
 
@@ -283,7 +283,7 @@ nobody notices from inside the repository.
 
 The two callers are thin on purpose. To add a third branch (say `production`, or a Play track):
 
-1. Add the branch and a ruleset for it (mirror `DevRules`).
+1. Add the branch and a ruleset for it (mirror `dev_branch_protector`).
 2. Copy `2-master-release.yml` to `3-<branch>-<verb>.yml`, change the `branches:` filter, the
    `concurrency.group`, and the inputs.
 3. If the new rung needs behaviour the current inputs cannot express, **add an input** to

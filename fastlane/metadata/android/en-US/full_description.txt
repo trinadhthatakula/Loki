@@ -21,7 +21,7 @@ So Loki borrows the privilege instead, one of two ways:
 
 Loki's onboarding will walk you through whichever you have. With neither, Loki can only read its own logs, which is not useful.
 
-Android 7.0 (API 24) or newer.
+Android 9.0 (API 28) or newer.
 
 <b>About your logs</b>
 

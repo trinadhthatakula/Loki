@@ -4,7 +4,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,10 +26,11 @@ import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -41,11 +41,11 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import com.valhalla.loki.R
 import com.valhalla.loki.model.getAppIcon
+import com.valhalla.loki.ui.theme.monoFontFamily
 import org.koin.androidx.compose.koinViewModel
 import java.io.File
 
@@ -59,7 +59,9 @@ fun AppListScreen(
     val context = LocalContext.current
     val uiState by appListViewModel.uiState.collectAsState()
 
-    val sheetState = rememberModalBottomSheetState()
+    // rememberModalBottomSheetState is deprecated in the pinned Material3; Hidden is the initial
+    // value it used to imply, and the default enabledValues match its skipPartiallyExpanded = false.
+    val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
 
     // --- PERMISSION HANDLING ---
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -143,39 +145,34 @@ fun AppListScreen(
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(uiState.filteredApps) { app ->
                         ListItem(
-                            leadingContent = {
-                                Box {
-                                    Image(
-                                        painter = rememberDrawablePainter(
-                                            getAppIcon(
-                                                app.packageName,
-                                                context
-                                            )
-                                        ),
-                                        "App Icon",
-                                        modifier = Modifier.Companion
-                                            .padding(5.dp)
-                                            .size(50.dp)
-                                    )
-                                }
-                            },
-                            headlineContent = { Text(app.appName ?: "Unknown") },
-                            supportingContent = { Text(app.packageName) },
-                            modifier = Modifier.clickable {
+                            onClick = {
                                 if (uiState.isLoggerRunning) {
                                     Toast.makeText(
                                         context,
                                         "A logging session is already running.",
                                         Toast.LENGTH_SHORT
-                                    )
-                                        .show()
-                                    return@clickable
+                                    ).show()
+                                } else {
+                                    appListViewModel.handleAppClick(context, app) { permission ->
+                                        notificationPermissionLauncher.launch(permission)
+                                    }
                                 }
-                                appListViewModel.handleAppClick(context, app) { permission ->
-                                    notificationPermissionLauncher.launch(permission)
-                                }
-                            }
-                        )
+                            },
+                            leadingContent = {
+                                Image(
+                                    painter = rememberDrawablePainter(
+                                        getAppIcon(app.packageName, context)
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .padding(5.dp)
+                                        .size(50.dp)
+                                )
+                            },
+                            supportingContent = { Text(app.packageName) },
+                        ) {
+                            Text(app.appName ?: "Unknown")
+                        }
                     }
                 }
             }
@@ -233,8 +230,12 @@ private fun LoggerBottomSheetContent(
 ) {
     val listState = rememberLazyListState()
 
-    // Auto-scroll to the bottom
-    LaunchedEffect(logLines.size) {
+    // Auto-scroll to the bottom.
+    //
+    // Keyed on the list, not on its size: the live tail is capped, so once it is saturated the size
+    // stops changing while the content keeps being replaced — and keying on size would have stopped
+    // following the log at exactly the point where following it matters.
+    LaunchedEffect(logLines) {
         if (logLines.isNotEmpty()) {
             listState.animateScrollToItem(logLines.size - 1)
         }
@@ -253,16 +254,29 @@ private fun LoggerBottomSheetContent(
         )
         LazyColumn(
             state = listState,
+            // No `weight(1f)`. In a Column, weight hands the child a fixed height — min and max both
+            // set to its share — and `heightIn` can only narrow the constraints it is given, so the
+            // 300 dp cap was silently discarded and this Column grew to the full screen. That in turn
+            // put the sheet's content over half the screen height, which is the condition
+            // ModalBottomSheet uses to create a PartiallyExpanded anchor and open there — so the
+            // sheet opened half-height with "Stop Logging" below the bottom of the screen, and the
+            // auto-scroll above parked the newest lines off-screen in the hidden half. With the cap
+            // actually applied the content stays under half the screen and the sheet opens fully.
+            //
+            // `min` as well as `max` so the sheet does not resize under the user's thumb as the
+            // first lines arrive.
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
-                .heightIn(max = 300.dp)
+                .heightIn(min = 200.dp, max = 300.dp)
                 .padding(vertical = 8.dp)
         ) {
             items(logLines) { line ->
                 Text(
                     text = line,
-                    fontFamily = FontFamily.Monospace,
+                    // The bundled Fira Code, not FontFamily.Monospace — that resolves to whatever
+                    // the device calls monospace, which on most Android builds is Droid Sans Mono
+                    // and does not match the rest of the app's log surfaces.
+                    fontFamily = monoFontFamily,
                     style = MaterialTheme.typography.bodySmall
                 )
             }

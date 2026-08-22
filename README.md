@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg"></a>
   <a href="https://github.com/trinadhthatakula/Loki/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/trinadhthatakula/Loki?sort=semver"></a>
   <a href="https://github.com/trinadhthatakula/Loki/actions/workflows/pr-ci.yml"><img alt="CI" src="https://github.com/trinadhthatakula/Loki/actions/workflows/pr-ci.yml/badge.svg"></a>
-  <img alt="minSdk 24" src="https://img.shields.io/badge/minSdk-24-brightgreen.svg">
+  <img alt="minSdk 28" src="https://img.shields.io/badge/minSdk-28-brightgreen.svg">
 </p>
 
 - 100% Kotlin
@@ -39,7 +39,8 @@ It's like giving Loki a secret mission to peek into the digital diary of your ap
 
 Two things have to be true.
 
-**Android 7.0 (API 24) or newer.** That's the floor.
+**Android 9.0 (API 28) or newer.** That's the floor. It used to be 7.0, and if you are on 7.x or
+8.x an older release will still install — but new ones won't.
 
 **Root or Shizuku.** This is the part worth understanding before you install. Reading *another*
 application's logs needs `android.permission.READ_LOGS`, which Android classifies as
@@ -49,7 +50,7 @@ secrets. So Loki borrows the privilege instead:
 
 | Path | What you need | Notes |
 |---|---|---|
-| **Root** | Magisk, KernelSU or APatch | Loki runs its capture through a root shell (libsu). |
+| **Root** | Magisk, KernelSU or APatch | Loki runs its capture through a root shell (Odin). |
 | **Shizuku** | [Shizuku](https://shizuku.rikka.app/) running | No root needed. Pair over wireless debugging or ADB; survives until reboot. |
 | Neither | — | Loki can only read its own logs. Not useful. |
 
@@ -125,7 +126,7 @@ Contributions are welcome, including small ones.
 - [**AGENTS.md**](AGENTS.md) / [**CLAUDE.md**](CLAUDE.md) — the same rules, for AI agents
 
 The short version: branch from `dev`, open your PR against `dev`, don't bump `versionCode`, and if
-you touch the privileged surface (`model/SuCli.kt`, `model/PermissionManager.kt`,
+you touch the privileged surface (`model/PermissionManager.kt`, `model/LogcatCapture.kt`,
 `services/LogcatService.kt`) say which privilege mode you actually tested under.
 
 ## Security
@@ -143,6 +144,18 @@ The Loki **name and icon** are trademarks and are **not** covered by the GPL —
 and re-icon. This is not a restriction on your code freedoms; it exists so that a user installing
 something called "Loki" knows where it came from, which matters more than usual for an app that
 reads other apps' logs. See [TRADEMARK.md](TRADEMARK.md).
+
+Loki bundles two fonts under the **SIL Open Font License 1.1**. The OFL permits a font to be bundled
+with GPL software, but it does not relicense it: each font stays under the OFL, and only Loki's own
+code is GPL-3.0-or-later. Packagers should treat the two licences as travelling side by side rather
+than as one covering the other. The OFL requires the licence and the copyright notice to travel with
+the font, so each file below is byte-for-byte upstream — including its copyright line, whose wording
+is the Copyright Holder's to choose and not ours to tidy up:
+
+- **Outfit** — Copyright 2021 The Outfit Project Authors
+  ([upstream](https://github.com/Outfitio/Outfit-Fonts)) — [`licenses/OFL-1.1-Outfit.txt`](licenses/OFL-1.1-Outfit.txt)
+- **Fira Code** — Copyright (c) 2014, The Fira Code Project Authors
+  ([upstream](https://github.com/tonsky/FiraCode)) — [`licenses/OFL-1.1-FiraCode.txt`](licenses/OFL-1.1-FiraCode.txt)
 
 ## Mirrors
 

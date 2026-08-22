@@ -108,6 +108,10 @@ kotlin {
         optIn.add("kotlin.RequiresOptIn")
         optIn.add("kotlin.time.ExperimentalTime")
         optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
+        // ModalBottomSheet and rememberBottomSheetState are still experimental, and sheets are
+        // the default transient surface under docs/review-anon-contribution.md §10.7 — so this
+        // would otherwise be a repeated @OptIn on most new UI files.
+        optIn.add("androidx.compose.material3.ExperimentalMaterial3Api")
     }
 }
 
@@ -128,7 +132,21 @@ android {
 
     defaultConfig {
         applicationId = "com.valhalla.loki"
-        minSdk = 24
+
+        // 28, raised from 24 to take Asgard UI.
+        //
+        // `com.trinadhthatakula:asgard` declares minSdk 28 in its AAR metadata, and depending on
+        // a library above your own floor is a hard `checkDebugAarMetadata` failure, not a
+        // warning. The alternative was to lower Asgard's floor and publish 2.0.1; raising Loki's
+        // was chosen instead.
+        //
+        // Worth recording that Asgard's 28 is conservative rather than load-bearing: it imports
+        // nothing from `android.*`, and the only API-sensitive thing in it is `Modifier.blur`,
+        // which documents its own no-op below Android 12. So this drops Android 7.0, 7.1, 8.0
+        // and 8.1 for a floor the library does not technically need — a knowing trade, not an
+        // oversight. Anything below 28 also predates scoped storage entirely, which is the same
+        // range docs/review-anon-contribution.md §1.1 rejected external log storage over.
+        minSdk = 28
         targetSdk = 36
 
         val code = resolveVersionCode()
@@ -212,12 +230,26 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.material.icons.extended)
+
+    /// Asgard UI — shared Compose components (theme-agnostic; reads the host MaterialTheme)
+    implementation(libs.asgard)
+
+    /// Navigation 3
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.navigation3.ui)
+    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
 
     /// Lifecycle
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+
+    /// DataStore — theme preferences
+    implementation(libs.androidx.datastore.preferences)
 
     /// Test
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -231,8 +263,15 @@ dependencies {
     /// Drawable Painter
     implementation(libs.accompanist.drawablepainter)
 
-    /// LibSU
-    implementation(libs.topjohnwu.libsu.core)
+    /// Root shell — Odin (published com.trinadhthatakula:odin, replaced libsu 6.0.0)
+    implementation(libs.odin)
+
+    /// Coroutines
+    // Loki imports kotlinx.coroutines all over `:app` without declaring it — until now the version
+    // arrived transitively from lifecycle/compose (1.9.0), and adding Odin would have silently
+    // bumped it to whatever Odin's `api(kotlinx-coroutines-android)` ships. Declared here so the
+    // version is Loki's decision, and so coroutines-test stays on the same one.
+    implementation(libs.kotlinx.coroutines.android)
 
     /// Koin
     implementation(libs.koin.android)

@@ -33,12 +33,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.valhalla.loki.R
 import com.valhalla.loki.model.Packages
-import com.valhalla.loki.model.PermissionManager
+import com.valhalla.loki.ui.theme.monoFontFamily
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -64,6 +63,28 @@ fun OnboardingScreen(
         }
     }
 
+    // Root is probed off the main thread, so the outcome arrives as a one-shot result rather than
+    // being available synchronously inside onClick.
+    LaunchedEffect(uiState.continueWithRootResult) {
+        when (uiState.continueWithRootResult) {
+            true -> {
+                viewModel.consumeContinueWithRootResult()
+                onSetupComplete()
+            }
+
+            false -> {
+                Toast.makeText(
+                    context,
+                    "Root access is not available, please grant access and try again",
+                    Toast.LENGTH_SHORT
+                ).show()
+                viewModel.consumeContinueWithRootResult()
+            }
+
+            null -> Unit
+        }
+    }
+
     Scaffold {
         Column(
             modifier = Modifier
@@ -86,17 +107,8 @@ fun OnboardingScreen(
                 title = "Root Access",
                 description = "Use the existing root access on your device. This is the most powerful method.",
                 buttonText = "Continue with Root",
-                onClick = {
-                    if (PermissionManager.isRootAvailable())
-                        onSetupComplete
-                    else {
-                        Toast.makeText(
-                            context,
-                            "Root access is not available, please grant access and try again",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                } // Just proceed, no extra action needed
+                isLoading = uiState.checkRootInProgress,
+                onClick = { viewModel.continueWithRoot() }
             )
             Spacer(Modifier.height(16.dp))
 
@@ -110,7 +122,7 @@ fun OnboardingScreen(
                     description = "Use the Shizuku app to grant the necessary permission automatically. This does not require root.",
                     buttonText = "Grant via Shizuku",
                     isLoading = uiState.grantViaShizukuInProgress,
-                    onClick = { viewModel.grantPermissionViaShizuku(context) }
+                    onClick = { viewModel.grantPermissionViaShizuku() }
                 )
                 Spacer(Modifier.height(16.dp))
             }
@@ -181,7 +193,10 @@ private fun AdbCard() {
                 ) {
                     Text(
                         text = adbCommand,
-                        fontFamily = FontFamily.Monospace,
+                        // Fira Code, so the ADB command a user is about to retype by hand renders in
+                        // a face that distinguishes 0/O and 1/l/I. FontFamily.Monospace would leave
+                        // that to whatever the device happens to ship.
+                        fontFamily = monoFontFamily,
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = {

@@ -40,6 +40,18 @@ shellcheck -x -S style .github/scripts/*.sh .github/scripts/test/*.sh   # pin 0.
 actionlint                                                              # pin 1.7.7
 ```
 
+If you touched a Markdown file — which includes moving or renaming any source file the docs
+name:
+
+```bash
+.github/scripts/check-doc-links.sh      # internal links + heading anchors, offline
+```
+
+`static-analysis` runs it on every PR. It checks relative targets and `#fragments` only;
+outbound URLs are swept weekly by `docs-link-check.yml`, which files an issue rather than
+reddening a PR. Keeping the flaky half out of the PR gate is deliberate — see the header
+comment in that workflow.
+
 Both tools are pinned by version **and** SHA256 in `pr-ci.yml`. A newer local build reports
 differently — actionlint 1.7.12 declares synthesised `env:` vars where 1.7.7 does not, so 1.7.7
 alone raises SC2153 — and a green run from the wrong version proves nothing about CI.
@@ -110,7 +122,7 @@ read the same layout — it is not evidence of Play intent.
 
 ## Architecture
 
-Single Gradle module, `:app`. `minSdk 24`, `targetSdk 36`, `compileSdk 37`, JVM target 21,
+Single Gradle module, `:app`. `minSdk 28`, `targetSdk 36`, `compileSdk 37`, JVM target 21,
 `applicationId com.valhalla.loki`.
 
 `compileSdk` is 37 while `targetSdk` stays 36, and that gap is deliberate: the pinned Compose BOM
@@ -121,37 +133,78 @@ to new *runtime* behaviour and is a separate, testable change.
 ```text
 com/valhalla/loki/
   di/Modules.kt      ← the single Koin module + initKoin()
-  model/             ← SuCli, PermissionManager, AppInfo, AppInfoGrabber, Packages, SavedLogs
-  services/          ← LogcatService (foreground service; the capture loop)
+  model/             ← PermissionManager, LogcatCapture, AppInfo, AppInfoGrabber, Packages,
+                       SavedLogs, ThemeManager, DirectoryChanges, LogLevel, Extensions
+  services/          ← LogcatService (foreground service; the capture loop),
+                       LokiDocumentsProvider (exposes logs/ to the system file picker)
   ui/
-    home/            ← HomeScreen + HomeViewModel
+    navigation/      ← LokiRoute (the NavKey surface) + NavItem (the bottom-bar items)
+    home/            ← HomeScreen + HomeViewModel  (the shell: bottom bar over one NavDisplay)
     appList/         ← AppListScreen + AppListViewModel
-    saved/           ← SavedLogsScreen + SavedLogsViewModel
+    saved/           ← SavedLogsScreen + SavedLogsViewModel, LogViewerScreen + LogViewerViewModel
+    explorer/        ← LogsExplorerScreen + LogsExplorerViewModel  (browse/bulk-delete/zip-share)
     onboarding/      ← OnboardingScreen + OnboardingViewModel  (privilege setup lives here)
+    settings/        ← SettingsScreen + SettingsViewModel
     theme/           ← Color, Theme, Type
-    widgets/         ← TermLogger (the terminal-style log view)
+    widgets/         ← Formatting (shared byte/count formatters)
 ```
 
 Plain screen + ViewModel pairs, Compose throughout. **Not** Thor's Clean Architecture split — there
 is no `domain/`, no `data/`, no use-case layer, no repository interfaces. Do not introduce one as a
 drive-by refactor; if it is worth doing it is worth its own discussion.
 
+## Navigation
+
+**Navigation 3**, wired as Thor is. `ui/navigation/LokiRoute.kt` is a `@Serializable sealed interface`
+over `NavKey`; `HomeScreen` holds one `rememberNavBackStack` **per tab**, a single
+`entryProvider<NavKey>` describing every route once, one `rememberDecoratedNavEntries` per stack
+(saveable-state-holder + ViewModel-store decorators), and one `NavDisplay`.
+
+Two things about this that are easy to get wrong:
+
+- `entry` is a **member** of `EntryProviderScope`, so it resolves through the receiver and must
+  **not** be imported. `import androidx.navigation3.runtime.entry` does not resolve and the error it
+  produces (`Unresolved reference 'entry'`) points at the call site, not the import. Only
+  `entryProvider` is imported.
+- Back is answered by three `BackHandler`s with **mutually exclusive** `enabled` flags, not one
+  handler with a `when` inside. Only the innermost *enabled* handler fires, so disjointness is what
+  guarantees exactly one runs.
+
+This replaced a `HorizontalPager` in which the log viewer and the logs explorer were not routes at
+all but early returns from a tab's composable, keyed off a `rememberSaveable` path. A `String?` in a
+Bundle cannot express "the explorer, at this directory, with the viewer above it", and the pager
+could swipe out from under an open capture. Do not reintroduce a pager for the tabs.
+
+The bottom bar hides while a child route is open. A consequence, not an oversight: you cannot
+tab-switch out of an open viewer or explorer, so the per-tab stacks pay off mainly across process
+death — which they do handle, verified.
+
 ## Dependency injection
 
 **Koin DSL, not Koin Annotations.** `di/Modules.kt` declares everything explicitly — `singleOf`,
-`viewModelOf`, and a `single<File>` bound to `filesDir`. There is no component scan, no compiler
-plugin, no KSP. A new ViewModel needs a `viewModelOf(::X)` line added by hand; annotating the class
-does nothing here.
+`viewModelOf`, and a few spelled-out `viewModel { }` blocks. There is no component scan, no compiler
+plugin, no KSP. A new ViewModel needs a line added by hand; annotating the class does nothing here.
 
 This is a real difference from Thor, where the scan finds annotated classes. Copying Thor's pattern
 into Loki produces a binding that silently does not exist until it fails at runtime.
 
+There is deliberately **no** unqualified `File` binding. There used to be a `single<File> { filesDir }`,
+and it meant any later `File` dependency silently resolved to `filesDir` whatever it actually
+wanted. The ViewModels that need a directory are spelled out and take `get<Context>().logsDir` or
+`.shareCacheDir`; `LogViewerViewModel` takes its file as an injected *parameter*
+(`parametersOf(file)`), one instance per file.
+
 ## The privileged surface
 
 `READ_LOGS` is `signature|privileged` and cannot be granted to a normal app. Loki reaches it through
-a root shell (libsu, `model/SuCli.kt`) or Shizuku (`rikka.shizuku`). `model/SuCli.kt`,
-`model/PermissionManager.kt` and `services/LogcatService.kt` therefore run with authority the app
-does not hold.
+a root shell (**Odin**, `com.valhalla.superuser.ktx.ShellRepository`) or Shizuku (`rikka.shizuku`).
+`model/PermissionManager.kt`, `model/LogcatCapture.kt` and `services/LogcatService.kt` therefore run
+with authority the app does not hold.
+
+The shell is injected as the `ShellRepository` interface, bound to `RealShellRepository` in
+`di/Modules.kt`. Take the interface, never construct a shell inline — that is what keeps the
+privileged surface swappable in a test and countable by grep. `model/SuCli.kt` is **gone**; it was
+the libsu wrapper.
 
 Rules — the full version is in [`AGENTS.md`](AGENTS.md) and [`.github/SECURITY.md`](.github/SECURITY.md):
 
@@ -165,12 +218,26 @@ Rules — the full version is in [`AGENTS.md`](AGENTS.md) and [`.github/SECURITY
 ## Key libraries
 
 - **Compose** (BOM) + **Material 3** — the whole UI. No XML layouts.
+- **Asgard UI** (`com.trinadhthatakula:asgard`, `com.valhalla.asgard.components`) — the shared
+  component library extracted from Thor's design system: `AsgardHeader`, `AsgardListRow`,
+  `AsgardSearchBar`, `AsgardEmptyState`, `AsgardSectionCard`, `AsgardSettingRow`, and friends.
+  **This is what sets `minSdk` at 28.** Depend on the KMP root module, not `asgard-android`.
 - **Koin** (`koin-android`, `koin-androidx-compose`) — DSL only, see above.
-- **libsu** (`topjohnwu.libsu.core`) — the root shell.
+- **Odin** (`com.trinadhthatakula:odin`, namespace `com.valhalla.superuser`) — the root shell.
+  Kotlin-first and coroutine-based; it replaced libsu 6.0.0. It exposes coroutines through `api()`,
+  so `gradle/libs.versions.toml` pins kotlinx-coroutines explicitly rather than letting Odin decide.
 - **Shizuku** (`shizuku-api`, `shizuku-provider`) — the non-root privilege path.
-- **kotlinx.serialization** — JSON.
+- **Navigation 3** (`navigation3-runtime`, `navigation3-ui`, `lifecycle-viewmodel-navigation3`) —
+  see the Navigation section. The lifecycle artifact tracks the *lifecycle* version, not nav3's.
+- **kotlinx.serialization** — JSON, and the routes.
+- **material-icons-extended** — declared in `:app` on purpose; Asgard hand-rolls its icons and does
+  not pass this down transitively.
 - **accompanist-drawablepainter** — app icons in Compose.
 - **androidx.core-splashscreen**, **lifecycle-runtime-ktx**, **activity-compose**.
+
+There is no `lifecycle-runtime-compose`, so **`collectAsStateWithLifecycle` is unavailable**. The
+project uses `androidx.compose.runtime.collectAsState()` throughout; copying a Thor snippet that
+calls the lifecycle-aware variant will not compile.
 
 All versions live in `gradle/libs.versions.toml`. Add a dependency there, then reference
 `libs.<alias>` — never a hardcoded coordinate in `build.gradle.kts`.
@@ -181,8 +248,12 @@ All versions live in `gradle/libs.versions.toml`. Add a dependency there, then r
 - `dependenciesInfo { includeInApk = false }` is set for F-Droid/IzzyOnDroid reproducibility. Leave
   it alone — the blob it removes is non-deterministic and breaks a rebuilder's byte comparison.
 - R8 full mode is on, with `android.r8.strictFullModeForKeepRules=true`. A keep rule that used to be
-  implied is not any more, and Loki reaches Shizuku's and libsu's APIs through paths R8 cannot always
+  implied is not any more, and Loki reaches Shizuku's and Odin's APIs through paths R8 cannot always
   see statically. `pr-ci.yml` fails the build if R8 writes `missing_rules.txt`.
+- Project-wide opt-ins live in `app/build.gradle.kts`: `ExperimentalMaterial3Api`,
+  `ExperimentalMaterial3ExpressiveApi` (this is what makes `MaterialTheme.motionScheme` usable),
+  `kotlin.time.ExperimentalTime`, `kotlin.RequiresOptIn`. **Not** opted in, so annotate locally:
+  `ExperimentalLayoutApi`, `ExperimentalCoroutinesApi`, `FlowPreview`.
 - Loki has **no** lint-clean baseline, so `warningsAsErrors` is off. Getting to zero comes first.
 
 ## Mirrors

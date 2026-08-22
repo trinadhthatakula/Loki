@@ -51,14 +51,17 @@ expected to follow literally.
 Loki reads **other applications'** logcat output. That needs `android.permission.READ_LOGS`, which
 is `signature|privileged` and cannot be granted to a normal app. Loki reaches it two ways:
 
-- **Root** — a shell via libsu (`model/SuCli.kt`).
+- **Root** — a shell via Odin, injected as `com.valhalla.superuser.ktx.ShellRepository`.
 - **Shizuku** — an ADB-privileged process via `rikka.shizuku`.
 
-So `model/SuCli.kt`, `model/PermissionManager.kt` and `services/LogcatService.kt` execute with
-authority the app does not otherwise hold. When you touch any of them:
+So `model/PermissionManager.kt`, `model/LogcatCapture.kt` and `services/LogcatService.kt` execute
+with authority the app does not otherwise hold. When you touch any of them:
 
 - **Never** interpolate unvalidated input into a shell string. A package name that did not come
   from `PackageManager` is a command injection into a root shell.
+- Take the `ShellRepository` **interface** from Koin; never construct a shell inline. That is what
+  keeps the privileged surface swappable in a test — and countable by grep.
+- **Never** assume a privileged command succeeded. Check the exit code.
 - Treat a captured log as sensitive data. Logcat carries tokens, URLs and third parties' PII;
   nothing in Loki may send it anywhere the user did not choose.
 - State in the PR which privilege mode(s) you actually exercised — **Root**, **Shizuku**, or
@@ -80,6 +83,12 @@ If you touched anything under `.github/scripts/` or `.github/workflows/`:
 .github/scripts/test/run-tests.sh
 shellcheck -x -S style .github/scripts/*.sh .github/scripts/test/*.sh
 actionlint          # pin 1.7.7 — a newer local build reports differently, see pr-ci.yml
+```
+
+If you touched a Markdown file, or moved a source file the docs name:
+
+```bash
+.github/scripts/check-doc-links.sh
 ```
 
 Notes:

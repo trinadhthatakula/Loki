@@ -22,7 +22,7 @@ That opens an advisory visible only to you and the maintainer.
 
 Loki's core function is reading **other applications'** logcat output, which needs
 `android.permission.READ_LOGS` — a `signature|privileged` permission a normal app cannot be granted.
-Loki reaches it through a **root shell** (libsu) or through **Shizuku**. That shapes what a useful
+Loki reaches it through a **root shell** (Odin) or through **Shizuku**. That shapes what a useful
 report looks like:
 
 - The **privilege mode** (Root or Shizuku) and the **Loki version**.
@@ -37,8 +37,8 @@ private, not encrypted-at-your-threat-model.
 
 ### What is in scope
 
-- Anything under `app/src/` — in particular the privileged surface: `model/SuCli.kt`,
-  `model/PermissionManager.kt`, and `services/`.
+- Anything under `app/src/` — in particular the privileged surface:
+  `model/PermissionManager.kt`, `model/LogcatCapture.kt`, and `services/`.
 - The release and CI machinery in `.github/`, where a flaw could mean a compromised published APK.
 - Loki's handling, storage and export of captured logs.
 

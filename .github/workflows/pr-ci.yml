@@ -264,6 +264,19 @@ jobs:
       - name: Run shell script tests
         run: .github/scripts/test/run-tests.sh
 
+      # Internal links only, and offline on purpose. The docs name source files
+      # (model/PermissionManager.kt, services/LogcatService.kt) and cross-link
+      # each other; both drift as the code moves, and a stale path sends a reader
+      # — or a security reporter following .github/SECURITY.md — to a file that is
+      # not there. Nothing else in CI reads a Markdown link.
+      #
+      # External links are NOT checked here. They rot on somebody else's
+      # schedule, and a PR that goes red because another host had a bad minute
+      # teaches contributors to ignore red. docs-link-check.yml sweeps those
+      # weekly and files an issue instead.
+      - name: Check internal documentation links
+        run: .github/scripts/check-doc-links.sh
+
       # Cheap, and it closes the one gap the tests above cannot: a release whose
       # store changelog never reached the fastlane tree. --check writes nothing.
       # It is vacuously green while a version has no curated notes, which is the

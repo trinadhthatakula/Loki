@@ -37,9 +37,10 @@ implies otherwise is not.
 This line is not decoration, and "not applicable" is a fine answer for a docs or UI
 change. It matters because Loki reads other apps' logcat through android.permission.
 READ_LOGS, which is signature|privileged — so it gets there either through a root
-shell (model/SuCli.kt) or through Shizuku (rikka.shizuku), and the two paths behave
-differently. For anything touching model/SuCli.kt, model/PermissionManager.kt or
-services/, this is the only way a reviewer knows what was really run.
+shell (Odin, injected as ShellRepository) or through Shizuku (rikka.shizuku), and the
+two paths behave differently. For anything touching model/PermissionManager.kt,
+model/LogcatCapture.kt or services/, this is the only way a reviewer knows what was
+really run.
 -->
 
 ## Screenshots / recordings

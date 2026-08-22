@@ -20,9 +20,30 @@
 
     <uses-permission android:name="android.permission.READ_LOGS" />
 
+    <!--
+      Backup is off, and that is a privacy decision rather than a default left alone.
+
+      Loki's `filesDir/logs/` holds other apps' logcat output — tokens, URLs, third parties' PII.
+      Auto Backup includes `getFilesDir()` unless told otherwise, so with backup on, a capture of
+      some banking app's log leaves the device for the user's Google account on the next backup
+      window, and is copied again by device-to-device transfer. Loki declares no INTERNET
+      permission, so backup was the only route by which a captured log could leave the device
+      *without the user asking for it*. Sharing and exporting a log are still there and still
+      work — that is the whole distinction AGENTS.md rule 2 draws: nothing may send a log
+      "anywhere the user did not choose", and an automatic upload to an account is precisely a
+      destination they did not choose. It also silently undid SavedLogs.kt's choice of filesDir
+      on privacy grounds.
+
+      What is given up is small and deliberate: the only other thing Loki persists is the theme in
+      DataStore. Three taps in Settings is a fair price for the guarantee.
+
+      The rule files are still referenced and now carry real `<exclude>` entries. They are dead
+      weight while `allowBackup` is false — belt and braces, so that anyone who turns backup back
+      on inherits the exclusions rather than re-discovering this the hard way.
+    -->
     <application
         android:name=".Loki"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/launch"
@@ -53,6 +74,27 @@
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/provider_paths" />
+        </provider>
+
+        <!--
+          Makes saved logs reachable from any file manager or SAF picker without moving them out of
+          filesDir. `exported="true"` is required — the framework has to see the provider — but the
+          MANAGE_DOCUMENTS permission is signature-level and held only by the system's DocumentsUI,
+          so no third-party app can bind to it directly. Everything else arrives as a per-document
+          URI grant the user chose, which is what grantUriPermissions is for.
+
+          The authority is duplicated in LokiDocumentsProvider.AUTHORITY, which builds the change
+          notification URIs; the two must agree.
+        -->
+        <provider
+            android:name=".services.LokiDocumentsProvider"
+            android:authorities="${applicationId}.documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
         </provider>
 
         <provider

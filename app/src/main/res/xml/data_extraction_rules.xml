@@ -1,19 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+   Backup and device-transfer rules for API 31+ (`android:dataExtractionRules`).
+
+   Backup is currently disabled outright — see `android:allowBackup="false"` and the reasoning above
+   it in AndroidManifest.xml. These rules are therefore not consulted today. They exist so that the
+   exclusion survives anyone turning backup back on.
+
+   Both destinations are listed on purpose. `<cloud-backup>` is the one that uploads; `<device-transfer>`
+   never leaves the user's hands, but a captured log is a third party's data rather than the user's,
+   so it should not silently follow them onto a new phone either. Neither is a decision Loki should
+   make on the user's behalf, so both are excluded and the user re-captures if they want the data.
+
+   `logs/` is `SavedLogs.logsDir`, relative to `filesDir`. The two spellings have to agree. Cache is
+   never included by the platform, so `log_shares/` needs no line here; and a capture in progress
+   needs none either, because it writes straight into `logs/` rather than to a scratch file — see
+   backup_rules.xml.
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude
+            domain="file"
+            path="logs/" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude
+            domain="file"
+            path="logs/" />
     </device-transfer>
-    -->
 </data-extraction-rules>

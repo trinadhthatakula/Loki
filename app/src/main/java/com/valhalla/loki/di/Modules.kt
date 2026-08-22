@@ -3,30 +3,77 @@ package com.valhalla.loki.di
 import android.app.Application
 import android.content.Context
 import com.valhalla.loki.model.AppInfoGrabber
+import com.valhalla.loki.model.LogcatCapture
 import com.valhalla.loki.model.Packages
+import com.valhalla.loki.model.PermissionManager
+import com.valhalla.loki.model.ThemeManager
+import com.valhalla.loki.model.logsDir
+import com.valhalla.loki.model.shareCacheDir
 import com.valhalla.loki.ui.appList.AppListViewModel
+import com.valhalla.loki.ui.explorer.LogsExplorerViewModel
 import com.valhalla.loki.ui.home.HomeViewModel
-import com.valhalla.loki.ui.onboarding.OnboardingScreen
 import com.valhalla.loki.ui.onboarding.OnboardingViewModel
+import com.valhalla.loki.ui.saved.LogViewerViewModel
 import com.valhalla.loki.ui.saved.SavedLogsViewModel
+import com.valhalla.loki.ui.settings.SettingsViewModel
+import com.valhalla.superuser.ktx.RealShellRepository
+import com.valhalla.superuser.ktx.ShellRepository
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
 import org.koin.core.module.dsl.singleOf
+import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
+import org.koin.dsl.bind
 import org.koin.dsl.module
-import java.io.File
 
-var appModules = module{
-    single<File> {
-        get<Context>().filesDir
-    }
+var appModules = module {
+    // Odin's root shell. Bound as the interface so tests and previews can swap it.
+    singleOf(::RealShellRepository) bind ShellRepository::class
+    single { androidContext().contentResolver }
     singleOf(::Packages)
     singleOf(::AppInfoGrabber)
+    singleOf(::PermissionManager)
+    // Single, because a second instance would be a second DataStore over the same file, which
+    // throws. Resolves `Context` from androidContext(), like Packages does.
+    singleOf(::ThemeManager)
+    singleOf(::LogcatCapture)
     viewModelOf(::AppListViewModel)
     viewModelOf(::HomeViewModel)
-    viewModelOf(::SavedLogsViewModel)
     viewModelOf(::OnboardingViewModel)
+    // Spelled out rather than viewModelOf(::X), because both of these take a File and there is no
+    // unqualified File binding to resolve it from. There used to be one — `single<File> { filesDir }`
+    // — and it meant any future File dependency silently got filesDir whatever it actually wanted.
+    viewModel {
+        SavedLogsViewModel(
+            logsDir = get<Context>().logsDir,
+            appInfoGrabber = get(),
+        )
+    }
+    // One instance per file, so the file is an injected parameter rather than a binding. The
+    // ContentResolver is bound below instead of a Context, which keeps the export path testable
+    // without an Android framework mock.
+    viewModel { parameters ->
+        LogViewerViewModel(
+            file = parameters.get(),
+            contentResolver = get(),
+        )
+    }
+    viewModel {
+        LogsExplorerViewModel(
+            logsDir = get<Context>().logsDir,
+            shareCacheDir = get<Context>().shareCacheDir,
+            appInfoGrabber = get(),
+        )
+    }
+    viewModel {
+        SettingsViewModel(
+            permissionManager = get(),
+            logcatCapture = get(),
+            themeManager = get(),
+            logsDir = get<Context>().logsDir,
+        )
+    }
 }
 
 fun Application.initKoin() = startKoin {
@@ -34,4 +81,3 @@ fun Application.initKoin() = startKoin {
     androidLogger()
     modules(appModules)
 }
-
