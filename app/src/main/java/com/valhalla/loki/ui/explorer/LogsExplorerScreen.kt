@@ -47,7 +47,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,7 +61,6 @@ import com.valhalla.asgard.components.AsgardDialogScaffold
 import com.valhalla.asgard.components.AsgardEmptyState
 import com.valhalla.asgard.components.AsgardLoadingState
 import com.valhalla.asgard.components.AsgardSearchBar
-import com.valhalla.loki.ui.saved.LogViewerScreen
 import org.koin.compose.viewmodel.koinViewModel
 import java.io.File
 
@@ -80,31 +78,19 @@ fun LogsExplorerScreen(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: LogsExplorerViewModel = koinViewModel(),
+    onOpenLog: (File) -> Unit = {},
 ) {
     val context = LocalContext.current
     val state by viewModel.uiState.collectAsState()
 
-    // The path rather than the File, because rememberSaveable's default saver takes a String and
-    // survives process death, which a File does not.
-    var openLogPath by rememberSaveable { mutableStateOf<String?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
-
-    // Same shim as the saved-logs tab: the viewer takes over the screen rather than opening as its
-    // own destination, because Loki still navigates by pager. Step 9 makes both of them routes and
-    // deletes these five lines.
-    val openPath = openLogPath
-    if (openPath != null) {
-        LogViewerScreen(
-            logFile = File(openPath),
-            onBack = { openLogPath = null },
-            modifier = modifier,
-        )
-        return
-    }
 
     // Selection first, then one level up, then out. Unwinding in that order is what stops a back
     // press from closing a browser the user only meant to deselect in. One lambda, so the hardware
     // gesture and the header's arrow cannot drift apart.
+    //
+    // This handler is registered inside the nav entry, so it sits below NavDisplay's own and wins —
+    // which is what keeps the two inner stages from being swallowed by a pop of the whole screen.
     val goBack = {
         if (state.isSelecting) viewModel.clearSelection() else if (!viewModel.up()) onClose()
     }
@@ -174,7 +160,7 @@ fun LogsExplorerScreen(
                                     when {
                                         state.isSelecting -> viewModel.toggleSelection(entry)
                                         entry.isDirectory -> viewModel.open(entry)
-                                        else -> openLogPath = entry.file.absolutePath
+                                        else -> onOpenLog(entry.file)
                                     }
                                 },
                                 onLongClick = { viewModel.toggleSelection(entry) },

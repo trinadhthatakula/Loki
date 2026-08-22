@@ -50,7 +50,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -69,7 +68,6 @@ import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.loki.BuildConfig
 import com.valhalla.loki.model.ThemeMode
 import com.valhalla.loki.services.LokiDocumentsProvider
-import com.valhalla.loki.ui.explorer.LogsExplorerScreen
 import com.valhalla.loki.ui.theme.monoFontFamily
 import com.valhalla.loki.ui.theme.success
 import com.valhalla.loki.ui.widgets.formatBytes
@@ -104,6 +102,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = koinViewModel(),
     onRequestShizuku: () -> Unit = {},
+    onBrowseLogs: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
@@ -125,15 +124,6 @@ fun SettingsScreen(
     var showLicenceSheet by remember { mutableStateOf(false) }
     var showThanksSheet by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
-    var showExplorer by rememberSaveable { mutableStateOf(false) }
-
-    // The same shim the saved-logs tab uses for the viewer, for the same reason: Loki still
-    // navigates by pager, so a screen that is not a tab has to take one over. Step 9 makes the
-    // explorer a route and deletes these four lines.
-    if (showExplorer) {
-        LogsExplorerScreen(onClose = { showExplorer = false }, modifier = modifier)
-        return
-    }
 
     LaunchedEffect(Unit) {
         viewModel.messages.collect { message ->
@@ -305,7 +295,7 @@ fun SettingsScreen(
                         title = "Browse in Loki",
                         subtitle = "Read, bulk-delete or share as a zip",
                         icon = Icons.Filled.Folder,
-                        onClick = { showExplorer = true },
+                        onClick = onBrowseLogs,
                     )
                     AsgardSettingRow(
                         title = "Browse in a file manager",
