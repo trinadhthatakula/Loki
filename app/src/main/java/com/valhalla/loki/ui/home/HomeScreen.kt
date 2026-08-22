@@ -45,6 +45,23 @@ import org.koin.androidx.compose.koinViewModel
 import java.io.File
 
 /**
+ * Pushes [route] unless it is already on top of the stack.
+ *
+ * A double-tap on a log row used to push the same key twice. The outgoing screen stays composed and
+ * hit-testable for the whole ~500 ms slide — nav3 puts no pointer-blocking modifier over it — so the
+ * second tap re-entered the same `onClick`. It did not crash, because both entries resolve to the
+ * same `contentKey` and `NavDisplay` renders such a key in one scene only, so the symptom was just a
+ * back press that appeared to do nothing: the first one popped the duplicate nobody could see.
+ *
+ * Comparing keys is enough to catch it — the routes are `@Serializable data class`es and objects, so
+ * equality is structural — and there is no legitimate way to open the viewer for a file while
+ * already viewing that same file.
+ */
+private fun MutableList<NavKey>.pushOnce(route: NavKey) {
+    if (lastOrNull() != route) add(route)
+}
+
+/**
  * The app shell: a bottom bar over one [NavDisplay].
  *
  * Each tab owns its own back stack, so opening a capture from Saved and then wandering into
@@ -132,14 +149,16 @@ fun HomeScreen(
             entry<LokiRoute.Saved> {
                 SavedLogsScreen(
                     modifier = modifier,
-                    onOpenLog = { file -> savedBackStack.add(LokiRoute.LogViewer(file.absolutePath)) },
+                    onOpenLog = { file ->
+                        savedBackStack.pushOnce(LokiRoute.LogViewer(file.absolutePath))
+                    },
                 )
             }
             entry<LokiRoute.Settings> {
                 SettingsScreen(
                     modifier = modifier,
                     onRequestShizuku = onRequestShizuku,
-                    onBrowseLogs = { settingsBackStack.add(LokiRoute.LogsExplorer) },
+                    onBrowseLogs = { settingsBackStack.pushOnce(LokiRoute.LogsExplorer) },
                 )
             }
             // These two are reachable from more than one tab — the viewer opens from Saved and from
@@ -149,7 +168,9 @@ fun HomeScreen(
                 LogsExplorerScreen(
                     modifier = modifier,
                     onClose = { currentBackStack.removeLastOrNull() },
-                    onOpenLog = { file -> currentBackStack.add(LokiRoute.LogViewer(file.absolutePath)) },
+                    onOpenLog = { file ->
+                        currentBackStack.pushOnce(LokiRoute.LogViewer(file.absolutePath))
+                    },
                 )
             }
             entry<LokiRoute.LogViewer> { route ->
