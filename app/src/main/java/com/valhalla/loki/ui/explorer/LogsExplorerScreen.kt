@@ -331,7 +331,22 @@ private fun ExplorerRow(
         // combinedClickable rather than ListItem's own onClick, because the row needs a long press
         // as well and that overload takes only the one. Long-press-to-select is the idiom every
         // file manager on the device already uses.
-        modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        //
+        // Both actions are labelled. A long press is the *only* way into selection mode here, and an
+        // unlabelled one is announced by TalkBack as a bare "long press" — the gesture without what
+        // it does, on a screen where nothing else advertises that selecting is possible. The click
+        // label varies because the same tap opens a directory, opens a log, or toggles a selection
+        // depending on where you are.
+        modifier = Modifier.combinedClickable(
+            onClickLabel = when {
+                selecting -> if (selected) "Deselect" else "Select"
+                entry.isDirectory -> "Open folder"
+                else -> "Open log"
+            },
+            onLongClickLabel = if (selecting) "Select" else "Start selecting",
+            onClick = onClick,
+            onLongClick = onLongClick,
+        ),
         // The content colours move with the container, not just the container. A selected row that
         // keeps onSurface text on a secondaryContainer background is a contrast ratio nobody
         // measured; the paired role is the one M3 guarantees against it.
