@@ -1,6 +1,7 @@
 package com.valhalla.loki.model
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -84,8 +85,24 @@ class ThemeManager(private val context: Context) {
 
     suspend fun setDynamicColor(enabled: Boolean) = edit { it[KEY_DYNAMIC_COLOR] = enabled }
 
+    /**
+     * Applies [block] to the store, treating a failed write as "the preference did not stick".
+     *
+     * The read path above degrades to defaults on [IOException] for a reason, and the write path had
+     * no equivalent guard. `DataStore.edit` throws [IOException] when it cannot persist — a full
+     * disk, or the same corrupt store `settings` already tolerates reading — and every caller is a
+     * bare `viewModelScope.launch { }` in
+     * [SettingsViewModel][com.valhalla.loki.ui.settings.SettingsViewModel] with no `try`, so the
+     * exception reached the default handler and toggling a theme switch took the app down. Swallowed
+     * rather than surfaced because the UI reads its state back from [settings]: a write that did not
+     * land shows up as the control returning to where it was, which is the truth.
+     */
     private suspend inline fun edit(crossinline block: (MutablePreferences) -> Unit) {
-        context.settingsDataStore.edit { block(it) }
+        try {
+            context.settingsDataStore.edit { block(it) }
+        } catch (e: IOException) {
+            Log.w(TAG, "could not persist a theme preference", e)
+        }
     }
 
     private companion object {
@@ -95,5 +112,7 @@ class ThemeManager(private val context: Context) {
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         val KEY_AMOLED = booleanPreferencesKey("amoled_mode")
         val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+
+        const val TAG = "ThemeManager"
     }
 }
