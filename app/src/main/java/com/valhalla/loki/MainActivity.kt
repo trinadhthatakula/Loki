@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.valhalla.asgard.components.AsgardDialogScaffold
+import com.valhalla.loki.model.LogcatCapture
 import com.valhalla.loki.model.Packages
 import com.valhalla.loki.model.PermissionManager
 import com.valhalla.loki.model.SelfGrantState
@@ -38,6 +39,14 @@ class MainActivity : ComponentActivity() {
     private val packages: Packages by inject()
     private val themeManager: ThemeManager by inject()
     private val selfPermissionGrabber: SelfPermissionGrabber by inject()
+
+    /**
+     * Only ever used to claim the capture before a grant that kills the appId.
+     *
+     * A `single`, so this is the same instance `LogcatService` runs its capture on — which is the
+     * whole point; a per-Activity copy would hand out a claim over nothing.
+     */
+    private val logcatCapture: LogcatCapture by inject()
 
     /** Null until DataStore has answered once. The splash screen stays up while it is. */
     private val themeSettings = MutableStateFlow<ThemeSettings?>(null)
@@ -217,17 +226,37 @@ class MainActivity : ComponentActivity() {
     /**
      * Arms the relaunch, then grants through the root shell.
      *
-     * Already on a coroutine and already known to have root, so this is only the ordering: arm
-     * first, grant second. The reasoning for that order — and the two device-verified failures that
-     * produced it — is on `PermissionManager.armSelfRelaunchViaRoot`.
+     * Already on a coroutine and already known to have root, so this is only the ordering: claim
+     * first, arm second, grant third. The reasoning for arming before granting — and the two
+     * device-verified failures that produced it — is on `PermissionManager.armSelfRelaunchViaRoot`.
+     *
+     * The claim is the same one `SelfPermissionGrabber.grantFatal` takes, and it is needed here for
+     * the same reason: this grant kills the whole appId, so running it under a live capture takes
+     * the foreground service and the half-written file with it, and then the armed relaunch reopens
+     * Loki over whatever the user had moved on to. Refusing costs the user nothing — the button is
+     * still there when the capture stops.
+     *
+     * Ahead of `armSelfRelaunchViaRoot`, so a refusal leaves nothing armed to fire two seconds later.
      */
     private suspend fun grantReadLogsViaRoot() {
-        permissionManager.armSelfRelaunchViaRoot()
-        val attempt = permissionManager.grantSelfViaRoot(android.Manifest.permission.READ_LOGS)
-        // Reaching this at all means we survived, which for READ_LOGS means the grant did not land.
-        if (!permissionManager.hasReadLogsPermission()) {
-            Log.w(TAG, "root could not grant READ_LOGS: ${attempt.detail}")
-            toast("Root could not grant READ_LOGS.")
+        if (!logcatCapture.blockForPrivilegedGrant()) {
+            Log.w(TAG, "root grant abandoned: a capture is running")
+            toast("A capture is running. Stop it, then grant READ_LOGS.")
+            return
+        }
+        try {
+            permissionManager.armSelfRelaunchViaRoot()
+            val attempt = permissionManager.grantSelfViaRoot(android.Manifest.permission.READ_LOGS)
+            // Reaching this at all means we survived, which for READ_LOGS means the grant did not
+            // land.
+            if (!permissionManager.hasReadLogsPermission()) {
+                Log.w(TAG, "root could not grant READ_LOGS: ${attempt.detail}")
+                toast("Root could not grant READ_LOGS.")
+            }
+        } finally {
+            // Only reached when the grant did not kill us. On the success path the claim dies with
+            // the process, which is the only cleanup it needs.
+            logcatCapture.releaseAfterPrivilegedGrant()
         }
     }
 
@@ -266,12 +295,27 @@ class MainActivity : ComponentActivity() {
      * Nothing restarts Loki on this path, and an earlier version of this comment claimed otherwise.
      * Shizuku ties its `newProcess` shell to the client, so the shell dies with us; only the root
      * path can arm a relaunch, which is what `grantReadLogsViaRoot` does.
+     *
+     * Claimed like the root path, and for the same reason: the kill is the channel-independent half.
+     * The claim is taken here rather than in [requestPrivilegeGrant] on purpose — this path can sit
+     * inside Shizuku's own permission dialog for as long as the user takes to read it, and a claim
+     * held across that would block captures the user is entitled to start, on an abort path that may
+     * never come back.
      */
     private fun grantReadLogs() {
         shizukuGrantPending = false
         lifecycleScope.launch {
-            if (!permissionManager.grantReadLogsViaShizuku()) {
-                toast("Shizuku could not grant READ_LOGS.")
+            if (!logcatCapture.blockForPrivilegedGrant()) {
+                Log.w(TAG, "Shizuku grant abandoned: a capture is running")
+                toast("A capture is running. Stop it, then grant READ_LOGS.")
+                return@launch
+            }
+            try {
+                if (!permissionManager.grantReadLogsViaShizuku()) {
+                    toast("Shizuku could not grant READ_LOGS.")
+                }
+            } finally {
+                logcatCapture.releaseAfterPrivilegedGrant()
             }
         }
     }
