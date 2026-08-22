@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.loki.model.LogcatCapture
 import com.valhalla.loki.model.PermissionManager
+import com.valhalla.loki.model.SelfPermissionGrabber
 import com.valhalla.loki.model.ThemeManager
 import com.valhalla.loki.model.ThemeMode
 import com.valhalla.loki.model.ThemeSettings
@@ -58,6 +59,7 @@ class SettingsViewModel(
     private val permissionManager: PermissionManager,
     private val logcatCapture: LogcatCapture,
     private val themeManager: ThemeManager,
+    private val selfPermissionGrabber: SelfPermissionGrabber,
     private val logsDir: File,
 ) : ViewModel() {
 
@@ -107,6 +109,21 @@ class SettingsViewModel(
             val stats = withContext(Dispatchers.IO) { measureLogs() }
             _uiState.update { it.copy(stats = stats) }
         }
+    }
+
+    /**
+     * What the "Tap to re-check" row does: re-measures, and re-runs the self-grant sweep.
+     *
+     * Separate from [refresh] because the two callers want different things. `init` and
+     * `clearAllLogs` want the numbers on screen brought up to date; a tap on that row is a user
+     * saying "look again", which is the one signal that justifies re-probing root after a previous
+     * launch found none — see [SelfPermissionGrabber.recheck]. It is also what makes the sweep's own
+     * "the user may grant root in a minute and something brings us back" comment true; before this
+     * existed, nothing did except a Shizuku binder delivery.
+     */
+    fun recheckPrivilege() {
+        refresh()
+        selfPermissionGrabber.recheck()
     }
 
     fun setThemeMode(mode: ThemeMode) = viewModelScope.launch { themeManager.setThemeMode(mode) }

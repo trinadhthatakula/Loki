@@ -7,17 +7,16 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 
-// Top level, so there is exactly one DataStore instance per process. Anything else that wants an
-// app preference must add a key here or go through ThemeManager — constructing a second DataStore
-// over the same file throws at runtime.
-private val Context.settingsDataStore by preferencesDataStore(name = "settings")
+// The `settingsDataStore` this file reads and writes lives in Preferences.kt, shared with
+// SelfGrantStore. It used to be declared here and private, which made the second owner of a
+// preference either a second DataStore over the same file — that throws — or a theme key that is
+// not about the theme. The keys below stay private to this class; only the store is shared.
 
 /**
  * Which theme the user picked.

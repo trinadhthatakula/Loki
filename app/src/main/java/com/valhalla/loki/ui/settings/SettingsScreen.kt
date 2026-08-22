@@ -101,7 +101,7 @@ private const val ADB_GRANT_COMMAND =
 fun SettingsScreen(
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = koinViewModel(),
-    onRequestShizuku: () -> Unit = {},
+    onRequestPrivilege: () -> Unit = {},
     onBrowseLogs: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -204,10 +204,16 @@ fun SettingsScreen(
                             privilege.canCapture -> MaterialTheme.colorScheme.success
                             else -> MaterialTheme.colorScheme.error
                         },
-                        onClick = { viewModel.refresh() },
+                        // recheckPrivilege(), not refresh(): a tap here also re-runs the self-grant
+                        // sweep, which is the only way back for a device that had no privilege the
+                        // last time it was asked.
+                        onClick = { viewModel.recheckPrivilege() },
                     )
                     AsgardSettingRow(
-                        title = "Grant via Shizuku",
+                        // One row rather than one per channel. The Activity picks the channel —
+                        // root if it is there, Shizuku otherwise — because that decision needs a
+                        // suspending root probe, which a settings row must not run.
+                        title = "Grant READ_LOGS",
                         // Not "needs Shizuku installed": `shizukuReady` is false both when
                         // Shizuku is absent and when it is running but has not authorised Loki,
                         // and PermissionManager cannot tell those apart. Saying "not installed"
@@ -215,6 +221,7 @@ fun SettingsScreen(
                         subtitle = when {
                             privilege == null -> "Checking…"
                             privilege.readLogsGranted -> "Already granted"
+                            privilege.rootAvailable -> "Tap to grant through the root shell"
                             privilege.shizukuReady -> "Shizuku has authorised Loki — tap to grant"
                             else -> "Tap to request access through Shizuku"
                         },
@@ -474,22 +481,28 @@ fun SettingsScreen(
     if (showShizukuConfirm) {
         // Warning up front, because the alternative is worse than a dialog: READ_LOGS is a
         // `development` permission, so the platform kills Loki the moment it is granted, and an
-        // app that vanishes when you tap a button reads as a crash. Loki cannot dodge the kill or
-        // restart itself around it — the Shizuku shell that runs the grant is torn down with us
-        // (the reasoning, and the two attempts that failed on device, are in
-        // PermissionManager.grantReadLogsViaShizuku).
+        // app that vanishes when you tap a button reads as a crash. Loki cannot dodge the kill —
+        // the reasoning, and the two attempts that failed on device, are in
+        // PermissionManager.grantReadLogsViaShizuku. It *can* come back afterwards, but only under
+        // root, so the wording splits on that rather than promising it to everyone.
+        val rooted = uiState.privilege?.rootAvailable == true
         AsgardDialogScaffold(
             onDismissRequest = { showShizukuConfirm = false },
-            title = "Grant READ_LOGS and close Loki?",
+            title = if (rooted) "Grant READ_LOGS and restart Loki?" else "Grant READ_LOGS and close Loki?",
             text = "Android closes an app when its permissions change, so Loki will shut down as " +
-                "soon as the grant lands. That is expected, not a crash. Reopen Loki afterwards " +
-                "and it will be able to read other apps' logs.",
+                "soon as the grant lands. That is expected, not a crash. " +
+                if (rooted) {
+                    "Root will reopen Loki a couple of seconds later; if it does not, open it " +
+                        "yourself and the permission will be there."
+                } else {
+                    "Reopen Loki afterwards and it will be able to read other apps' logs."
+                },
             icon = Icons.Filled.Key,
-            confirmText = "Grant and close",
+            confirmText = if (rooted) "Grant and restart" else "Grant and close",
             dismissText = "Cancel",
             onConfirm = {
                 showShizukuConfirm = false
-                onRequestShizuku()
+                onRequestPrivilege()
             },
         )
     }

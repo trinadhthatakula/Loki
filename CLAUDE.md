@@ -133,8 +133,11 @@ to new *runtime* behaviour and is a separate, testable change.
 ```text
 com/valhalla/loki/
   di/Modules.kt      ← the single Koin module + initKoin()
-  model/             ← PermissionManager, LogcatCapture, AppInfo, AppInfoGrabber, Packages,
-                       SavedLogs, ThemeManager, DirectoryChanges, LogLevel, Extensions
+  model/             ← PermissionManager, SelfPermissions (the pure grant rule),
+                       SelfPermissionGrabber (the launch-time sweep), SelfGrantStore (its two
+                       persisted markers), LogcatCapture, AppInfo, AppInfoGrabber, Packages,
+                       SavedLogs, Preferences (the one DataStore), ThemeManager, DirectoryChanges,
+                       LogLevel, Extensions
   services/          ← LogcatService (foreground service; the capture loop),
                        LokiDocumentsProvider (exposes logs/ to the system file picker)
   ui/
@@ -194,17 +197,129 @@ wanted. The ViewModels that need a directory are spelled out and take `get<Conte
 `.shareCacheDir`; `LogViewerViewModel` takes its file as an injected *parameter*
 (`parametersOf(file)`), one instance per file.
 
+Anything holding preferences must be a `single`, and must go through the one delegate in
+`model/Preferences.kt`. `preferencesDataStore(name = "settings")` may be instantiated **once per
+process** — a second instance over the same file throws at runtime, not at compile time — so
+`ThemeManager` and `SelfGrantStore` share `Context.settingsDataStore` and keep their own keys
+private. Do not give a new owner its own store or its own file just to avoid the import.
+
 ## The privileged surface
 
-`READ_LOGS` is `signature|privileged` and cannot be granted to a normal app. Loki reaches it through
-a root shell (**Odin**, `com.valhalla.superuser.ktx.ShellRepository`) or Shizuku (`rikka.shizuku`).
-`model/PermissionManager.kt`, `model/LogcatCapture.kt` and `services/LogcatService.kt` therefore run
-with authority the app does not hold.
+`READ_LOGS` cannot be granted to a normal app by the user. Loki reaches it through a root shell
+(**Odin**, `com.valhalla.superuser.ktx.ShellRepository`) or Shizuku (`rikka.shizuku`).
+`model/PermissionManager.kt`, `model/SelfPermissionGrabber.kt`, `model/LogcatCapture.kt` and
+`services/LogcatService.kt` therefore run with authority the app does not hold.
 
 The shell is injected as the `ShellRepository` interface, bound to `RealShellRepository` in
 `di/Modules.kt`. Take the interface, never construct a shell inline — that is what keeps the
 privileged surface swappable in a test and countable by grep. `model/SuCli.kt` is **gone**; it was
 the libsu wrapper.
+
+### Self-granting READ_LOGS
+
+The protection level is `signature|privileged|development` — note the third flag, which this file
+used to omit — with `gids=[1007, 1096]`. Device-verified on API 36 and 37. Both halves matter:
+
+- The `development` flag is the whole reason `pm grant` works at all. `PermissionManagerService`
+  accepts `isRuntimePermission || bp.isDevelopment()`, so a privileged shell can hand Loki its own
+  `READ_LOGS` without a signature match.
+- The gids are why the grant **kills the entire appId**
+  (`Killing …: permission grant or revoke changed gids`). A running process's supplementary group
+  set cannot change, so the platform restarts rather than reconciles. This is expected, not a crash.
+
+`SelfPermissionGrabber` sweeps once per launch that has a UI — `Loki.onCreate()` registers the
+Shizuku listener and starts a sweep that does nothing until `MainActivity.onCreate()` calls
+`onUiPresent()` — plus once per `recheck()`; concurrent sweeps are serialised by a mutex, not
+prevented. The rule it applies lives in `model/SelfPermissions.kt`, which has **zero `android.*`
+imports** so it can be tested on the JVM — `SelfPermissionsTest` is where the cases are written
+down. Six things about it are easy to get wrong:
+
+- **Two booleans, not Thor's one.** Thor's `planSelfGrant` gates on `isDangerous`, computed as
+  `(protectionLevel and PROTECTION_MASK_BASE) == PROTECTION_DANGEROUS`. `READ_LOGS` is
+  `2|16|32 = 50`, so that test asks `2 == 1` and structurally cannot ever grant it. Loki adds
+  `isDevelopment`, and it must be a **flag** test —
+  `(protectionFlags and PROTECTION_FLAG_DEVELOPMENT) != 0` — never a masked-base comparison.
+- **Order is load-bearing.** Survivable grants (`gids=[]`, e.g. `POST_NOTIFICATIONS`) go first and
+  fatal ones last, because the death aborts the rest of the sweep. Thor's suite actively pins the
+  opposite (`theManifestsDeclarationOrderIsPreserved`) — it never needed this, so do not copy it.
+- **The channels are asymmetric.** Root grants silently and arms a detached relaunch that survives
+  the kill; Shizuku cannot, because `newProcess` dies with its client, so a relaunch armed there
+  dies too. Shizuku therefore raises a dialog and the user reopens Loki by hand. The armed command
+  is `nohup sh -c 'sleep N; pidof <pkg> >/dev/null 2>&1 || am start …' &`, and the `pidof` half is
+  load-bearing: arming has to precede the grant, so nothing can call the command off afterwards, and
+  a grant that *failed* would otherwise be followed two seconds later by Loki hauling itself to the
+  foreground over whatever the user had moved on to. `pidof` finds our own process because the
+  command runs as root, where `/proc` is not `hidepid`-restricted, and the package name doubles as
+  the process name only because Loki declares no `android:process`.
+- **Do not trust the exit code for "the permission landed."** Each grant is confirmed by re-reading
+  `checkSelfPermission`. The plan is built from `PackageManager` alone before any privilege is
+  probed, so a launch with nothing to grant never runs `su`.
+- **The capture is claimed, not asked about.** `sweep()` still bails early on
+  `LogcatCapture.isCapturing`, but that read is stale long before the grant — the root probe alone
+  can take Odin's ten-second timeout, and on the Shizuku path a human has been reading a dialog in
+  between. `grantFatal` therefore calls `LogcatCapture.blockForPrivilegedGrant()`, which takes the
+  same monitor `start()` holds, so exactly one of the two wins and a refused claim abandons the
+  grant. Do not "simplify" that back into a second `isCapturing` read; a check-then-act cannot be
+  repaired by checking again.
+- **A headless process may not spend privilege.** `Application.onCreate` runs on *every* process
+  start, and Loki exports `LokiDocumentsProvider` with a `DOCUMENTS_PROVIDER` filter — so DocumentsUI
+  starts Loki whenever any app opens a file picker, and the sticky Shizuku callback re-enters the
+  sweep there too. `sweep()` therefore returns immediately unless `uiPresent` is set, which only
+  `MainActivity.onCreate()` does. Without it, a rooted device would get a root-manager prompt over
+  somebody else's picker, then the fatal grant, then `am start` putting Loki in the foreground on top
+  of whatever the user was doing. The `pidof` guard above cannot cover that case: the process really
+  did die, so there is nothing for `pidof` to find. That guard answers "did the grant fail?"; the
+  flag answers "was there a UI to come back to?" The gate is inside `sweep()`, not at the `start()`
+  call site, because the binder listener calls `refresh()` directly.
+
+Scope is decided by the device, not a hardcoded list: every permission Loki declares that
+`pm grant` can actually change. Adding one to the manifest needs no code edit. `POST_NOTIFICATIONS`
+consequently never shows its system prompt.
+
+**A grant is taken once, not once per launch.** `SelfGrantStore` persists the survivable permissions
+a sweep has confirmed, and `planSelfGrant` skips a `dangerous` name it finds there — so turning
+Loki's notifications off in Settings now sticks instead of lasting until the next cold start. The
+exemption is asymmetric on purpose: `development` permissions are never consulted against that set,
+because `READ_LOGS` has no switch anywhere in Settings and so its absence cannot be a user's choice.
+There is still no `pm revoke` counterpart.
+
+**The `su` probe is paid for once per install, not once per launch.** `READ_LOGS` is permanently
+ungranted on a phone with no privilege, so the plan is permanently non-empty and `resolveChannel`
+used to spawn `su` — and, on some root managers, raise a prompt — on every single cold start.
+`SelfGrantStore.rootUnavailable` remembers the answer; `SelfPermissionGrabber.recheck()`, wired to
+Settings' "Tap to re-check" row, is how someone who roots their phone later gets the probe back.
+Shizuku is still checked every sweep, because `checkSelfPermission()` costs nothing. Note this fixes
+the *sweep* only: `AppListViewModel` and `SettingsViewModel` still probe root when they need the
+answer for their own UI.
+
+`PermissionManager.isRootAvailable()` closes a cached **non-root** shell before re-probing. Odin's
+`MainShell` falls back to `exec("sh")` when `su` throws and caches that as the main shell, and
+`cached`'s getter only clears the slot when `status < 0` — a live non-root shell is `0`. Without
+the close, one failed probe pins root unavailable for the whole process and every "tap to re-check"
+is a silent no-op.
+
+### Capture precedence: root before READ_LOGS
+
+`LogcatCapture` probes root **first** and only falls back to in-process `READ_LOGS`, at the cost of
+a `su` spawn on the common path. Holding `READ_LOGS` is what subjects a client to
+`com.android.systemui/.logcat.LogAccessDialogActivity`: `logd`'s `clientIsExemptedFromUserConsent`
+exempts uid < 10000, so a `su` shell at uid 0 is never asked and an in-process reader always is.
+`LogcatManagerService` then raises the dialog only for a requester in `PROCESS_STATE_TOP` and
+silently declines anything else — and a foreground service is not `TOP`. A declined *streaming*
+reader is not killed: logd revokes the privilege and leaves it attached, so the symptom to expect is
+a capture sitting there filling nothing, not one that exits non-zero and says why.
+
+⚠️ **All of that is read from the platform's sources, not observed on a device.** Settling it needs
+root *and* `READ_LOGS` on one phone, which nobody working on this has had. The same caveat is
+written on `LogcatCapture`'s class KDoc, in more detail; keep the two in step. If the prediction is
+wrong the ordering is merely unnecessary rather than harmful, which is why it stands — but do not
+flip it to preferring `READ_LOGS` on the grounds that the app now holds it, and do not restate the
+prediction as a measurement.
+
+Root being *present but unusable* falls through to `READ_LOGS` rather than ending the capture — the
+`&&` in the mode `when`, not a nested `if`. Three ways to reach it: the `su` probe succeeded but
+`logcat` under it failed, the shell died between probe and use, or a stop arrived mid-setup. That
+hole arrived with the root-first reorder and is easy to reintroduce.
 
 Rules — the full version is in [`AGENTS.md`](AGENTS.md) and [`.github/SECURITY.md`](.github/SECURITY.md):
 

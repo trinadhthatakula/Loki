@@ -6,6 +6,8 @@ import com.valhalla.loki.model.AppInfoGrabber
 import com.valhalla.loki.model.LogcatCapture
 import com.valhalla.loki.model.Packages
 import com.valhalla.loki.model.PermissionManager
+import com.valhalla.loki.model.SelfGrantStore
+import com.valhalla.loki.model.SelfPermissionGrabber
 import com.valhalla.loki.model.ThemeManager
 import com.valhalla.loki.model.logsDir
 import com.valhalla.loki.model.shareCacheDir
@@ -37,7 +39,24 @@ var appModules = module {
     // Single, because a second instance would be a second DataStore over the same file, which
     // throws. Resolves `Context` from androidContext(), like Packages does.
     singleOf(::ThemeManager)
+    // Shares that one DataStore rather than opening its own — see model/Preferences.kt.
+    singleOf(::SelfGrantStore)
     singleOf(::LogcatCapture)
+    // Spelled out rather than singleOf(::X): the constructor takes a String and a PackageManager,
+    // and an unqualified `String` binding would be the same mistake the removed
+    // `single<File> { filesDir }` was — every future String dependency silently resolving to the
+    // package name. There is no component scan here, so this line *is* the binding; annotating the
+    // class does nothing. Nothing resolves it lazily either, which is why `Loki.onCreate` asks for
+    // it by hand.
+    single {
+        SelfPermissionGrabber(
+            packageName = androidContext().packageName,
+            packageManager = androidContext().packageManager,
+            permissionManager = get(),
+            logcatCapture = get(),
+            store = get(),
+        )
+    }
     viewModelOf(::AppListViewModel)
     viewModelOf(::HomeViewModel)
     viewModelOf(::OnboardingViewModel)
@@ -71,6 +90,7 @@ var appModules = module {
             permissionManager = get(),
             logcatCapture = get(),
             themeManager = get(),
+            selfPermissionGrabber = get(),
             logsDir = get<Context>().logsDir,
         )
     }

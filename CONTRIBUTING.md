@@ -61,7 +61,9 @@ app/src/main/java/com/valhalla/loki/
 ├── Loki.kt              ← Application class, Koin start-up
 ├── MainActivity.kt
 ├── di/Modules.kt        ← the single Koin module
-├── model/               ← AppInfo, AppInfoGrabber, SavedLogs, LogcatCapture, PermissionManager, …
+├── model/               ← AppInfo, AppInfoGrabber, SavedLogs, LogcatCapture,
+│                          PermissionManager, SelfPermissions + SelfPermissionGrabber
+│                          (the launch-time self-grant), …
 ├── services/            ← LogcatService (foreground service, dataSync), LokiDocumentsProvider
 └── ui/
     ├── navigation/      ← LokiRoute (the NavKey surface) + NavItem (bottom-bar items)
@@ -85,21 +87,28 @@ route generation — annotating a class does nothing here.
 ### The privileged surface — read this before touching it
 
 Loki reads **other applications'** logcat output. That needs `android.permission.READ_LOGS`, which
-is `signature|privileged` and therefore **not grantable to a normal app** by the user. Loki gets it
-one of two ways:
+is `signature|privileged|development` and therefore **not grantable to a normal app** by the user.
+Loki gets it one of two ways:
 
 - **Root** — a shell via Odin, injected as `com.valhalla.superuser.ktx.ShellRepository`.
 - **Shizuku** — an ADB-privileged process via `rikka.shizuku`.
 
-That makes every change in `model/PermissionManager.kt`, `model/LogcatCapture.kt` and
-`services/LogcatService.kt` security-relevant. A command assembled from a package name that came
-from anywhere but `PackageManager` is a shell-injection surface. When you change one of these:
+Either one is also what `SelfPermissionGrabber` uses at launch to grant Loki the permission itself.
+The `development` flag is why `pm grant` is allowed to; the permission's supplementary gids are why
+the grant kills the app's process. [`CLAUDE.md`](CLAUDE.md#self-granting-read_logs) writes out the
+consequences, including why the grants are issued in a specific order.
+
+That makes every change in `model/PermissionManager.kt`, `model/SelfPermissionGrabber.kt`,
+`model/LogcatCapture.kt` and `services/LogcatService.kt` security-relevant. A command assembled from
+a package name that came from anywhere but `PackageManager` is a shell-injection surface. When you
+change one of these:
 
 - Say in the PR which privilege mode(s) you tested under — **Root**, **Shizuku**, or **neither**.
 - Never interpolate unvalidated user input into a shell string.
 - Take the `ShellRepository` interface from Koin rather than constructing a shell inline, so the
   privileged surface stays swappable in a test and countable by grep.
-- Never assume a privileged command succeeded — check the exit code.
+- Never assume a privileged command succeeded — check the exit code, and prefer re-reading what
+  the platform reports (`checkSelfPermission` after a `pm grant`) over trusting that status.
 - Treat a captured log as sensitive data. Logcat carries tokens, URLs and PII; nothing in Loki may
   send it anywhere the user did not choose.
 

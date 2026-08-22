@@ -77,8 +77,9 @@ fun HomeScreen(
     onExitConfirmed: () -> Unit,
     // Shizuku's grant flow needs an Activity to bind the permission callback to, which a
     // composable does not have, so the Activity hands the trigger down rather than the screen
-    // reaching for it.
-    onRequestShizuku: () -> Unit = {},
+    // reaching for it. It covers root as well: which channel actually runs the grant is the
+    // Activity's decision, not something a settings row should be picking.
+    onRequestPrivilege: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -157,7 +158,7 @@ fun HomeScreen(
             entry<LokiRoute.Settings> {
                 SettingsScreen(
                     modifier = modifier,
-                    onRequestShizuku = onRequestShizuku,
+                    onRequestPrivilege = onRequestPrivilege,
                     onBrowseLogs = { settingsBackStack.pushOnce(LokiRoute.LogsExplorer) },
                 )
             }
