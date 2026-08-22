@@ -149,8 +149,8 @@ Loki bundles two fonts under the **SIL Open Font License 1.1**. The OFL permits 
 with GPL software, but it does not relicense it: each font stays under the OFL, and only Loki's own
 code is GPL-3.0-or-later. Packagers should treat the two licences as travelling side by side rather
 than as one covering the other. The OFL requires the licence and the copyright notice to travel with
-the font, so each file below is byte-for-byte upstream — including its copyright line, which is the
-Copyright Holder's to word:
+the font, so each file below is byte-for-byte upstream — including its copyright line, whose wording
+is the Copyright Holder's to choose and not ours to tidy up:
 
 - **Outfit** — Copyright 2021 The Outfit Project Authors
   ([upstream](https://github.com/Outfitio/Outfit-Fonts)) — [`licenses/OFL-1.1-Outfit.txt`](licenses/OFL-1.1-Outfit.txt)
