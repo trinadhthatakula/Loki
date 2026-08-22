@@ -8,7 +8,9 @@ import com.valhalla.loki.model.Packages
 import com.valhalla.loki.model.PermissionManager
 import com.valhalla.loki.model.ThemeManager
 import com.valhalla.loki.model.logsDir
+import com.valhalla.loki.model.shareCacheDir
 import com.valhalla.loki.ui.appList.AppListViewModel
+import com.valhalla.loki.ui.explorer.LogsExplorerViewModel
 import com.valhalla.loki.ui.home.HomeViewModel
 import com.valhalla.loki.ui.onboarding.OnboardingViewModel
 import com.valhalla.loki.ui.saved.LogViewerViewModel
@@ -55,6 +57,13 @@ var appModules = module {
         LogViewerViewModel(
             file = parameters.get(),
             contentResolver = get(),
+        )
+    }
+    viewModel {
+        LogsExplorerViewModel(
+            logsDir = get<Context>().logsDir,
+            shareCacheDir = get<Context>().shareCacheDir,
+            appInfoGrabber = get(),
         )
     }
     viewModel {

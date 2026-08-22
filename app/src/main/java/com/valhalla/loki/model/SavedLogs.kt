@@ -22,6 +22,19 @@ const val LOGS_DIR_NAME = "logs"
 val Context.logsDir: File get() = File(filesDir, LOGS_DIR_NAME)
 
 /**
+ * The single directory name share bundles are staged under, relative to `cacheDir`.
+ *
+ * It is named here rather than at the one call site because `res/xml/provider_paths.xml` declares
+ * exactly this path and nothing wider — a `<cache-path>` covering all of `cacheDir` would make every
+ * scratch file Loki ever writes reachable through the FileProvider. The two spellings have to agree
+ * or a share fails with `IllegalArgumentException` at the moment the user taps it.
+ */
+const val SHARE_CACHE_DIR_NAME = "log_shares"
+
+/** Where a zip built for a share is staged: `cacheDir/log_shares/<epoch millis>/<name>.zip`. */
+val Context.shareCacheDir: File get() = File(cacheDir, SHARE_CACHE_DIR_NAME)
+
+/**
  * One saved log file.
  *
  * [sizeBytes] is measured when the listing is built rather than read from [file] where it is drawn:

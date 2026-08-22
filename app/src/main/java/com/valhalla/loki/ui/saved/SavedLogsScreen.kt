@@ -338,8 +338,9 @@ private val ICON_SIZE = 40.dp
 /**
  * A read grant on one file, for one app the user picked, for as long as that app lives.
  *
- * The `files-path` entry in `res/xml/provider_paths.xml` is what makes `filesDir/logs/…`
- * shareable at all. Read only, and never write: the contribution set
+ * The `logs` entry in `res/xml/provider_paths.xml` is what makes `filesDir/logs/…` shareable at
+ * all, and it is scoped to that subdirectory — a log is the only thing in `filesDir` a URI can be
+ * built for. Read only, and never write: the contribution set
  * `FLAG_GRANT_WRITE_URI_PERMISSION` on a *view* intent, which handed the chosen app the ability to
  * rewrite the capture it was asked to display.
  */

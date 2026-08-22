@@ -1,11 +1,32 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?><!--
+  What Loki's FileProvider is allowed to build a URI for. Nothing outside these paths can be
+  shared, which is the point: a capture carries whatever the target app logged, and this file is
+  the list of places such a thing can come from.
+
+  Two entries, matching the two things that actually leave the app:
+
+    * `logs` — the captures, at `filesDir/logs/<package>/<epoch millis>.log`. Declared as `logs/`
+      rather than `.` so the rest of `filesDir` — the settings datastore among it — is not
+      shareable. `com.valhalla.loki.model.LOGS_DIR_NAME` is the same string in Kotlin.
+    * `log_shares` — zip bundles staged for a share, at `cacheDir/log_shares/<millis>/`. Same
+      reasoning; `com.valhalla.loki.model.SHARE_CACHE_DIR_NAME` is the Kotlin half of it.
+
+  Removed: `<external-path name="external_files" path="."/>`, which exposed the whole of shared
+  external storage through Loki's provider. Nothing in the app has ever written there — captures
+  live in `filesDir` (see `model/SavedLogs.kt`) — so it granted reach over other apps' files and
+  the user's photos in exchange for nothing.
+
+  `<root-path name="root" path="."/>` is still here and should not be. It declares the entire
+  filesystem, in an app that runs a root shell. It predates the contribution and predates this
+  review, so it is raised in the PR rather than changed quietly — nothing in Loki needs it, and
+  deleting the line is the whole fix.
+-->
 <paths>
-    <external-path name="external_files" path="."/>
     <files-path
-        name="files"
-        path="." />
+        name="logs"
+        path="logs/" />
     <cache-path
-        name="cached_files"
-        path="." />
+        name="log_shares"
+        path="log_shares/" />
     <root-path name="root" path="." />
 </paths>

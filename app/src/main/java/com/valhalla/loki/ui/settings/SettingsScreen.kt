@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.HourglassEmpty
@@ -49,6 +50,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -67,6 +69,7 @@ import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.loki.BuildConfig
 import com.valhalla.loki.model.ThemeMode
 import com.valhalla.loki.services.LokiDocumentsProvider
+import com.valhalla.loki.ui.explorer.LogsExplorerScreen
 import com.valhalla.loki.ui.theme.monoFontFamily
 import com.valhalla.loki.ui.theme.success
 import com.valhalla.loki.ui.widgets.formatBytes
@@ -122,6 +125,15 @@ fun SettingsScreen(
     var showLicenceSheet by remember { mutableStateOf(false) }
     var showThanksSheet by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
+    var showExplorer by rememberSaveable { mutableStateOf(false) }
+
+    // The same shim the saved-logs tab uses for the viewer, for the same reason: Loki still
+    // navigates by pager, so a screen that is not a tab has to take one over. Step 9 makes the
+    // explorer a route and deletes these four lines.
+    if (showExplorer) {
+        LogsExplorerScreen(onClose = { showExplorer = false }, modifier = modifier)
+        return
+    }
 
     LaunchedEffect(Unit) {
         viewModel.messages.collect { message ->
@@ -289,6 +301,12 @@ fun SettingsScreen(
             item {
                 val stats = uiState.stats
                 AsgardSectionCard(title = "Saved logs", modifier = Modifier.fillMaxWidth()) {
+                    AsgardSettingRow(
+                        title = "Browse in Loki",
+                        subtitle = "Read, bulk-delete or share as a zip",
+                        icon = Icons.Filled.Folder,
+                        onClick = { showExplorer = true },
+                    )
                     AsgardSettingRow(
                         title = "Browse in a file manager",
                         subtitle = "Opens the picker at Loki's own logs root",
