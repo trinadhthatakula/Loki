@@ -40,6 +40,18 @@ shellcheck -x -S style .github/scripts/*.sh .github/scripts/test/*.sh   # pin 0.
 actionlint                                                              # pin 1.7.7
 ```
 
+If you touched a Markdown file — which includes moving or renaming any source file the docs
+name:
+
+```bash
+.github/scripts/check-doc-links.sh      # internal links + heading anchors, offline
+```
+
+`static-analysis` runs it on every PR. It checks relative targets and `#fragments` only;
+outbound URLs are swept weekly by `docs-link-check.yml`, which files an issue rather than
+reddening a PR. Keeping the flaky half out of the PR gate is deliberate — see the header
+comment in that workflow.
+
 Both tools are pinned by version **and** SHA256 in `pr-ci.yml`. A newer local build reports
 differently — actionlint 1.7.12 declares synthesised `env:` vars where 1.7.7 does not, so 1.7.7
 alone raises SC2153 — and a green run from the wrong version proves nothing about CI.

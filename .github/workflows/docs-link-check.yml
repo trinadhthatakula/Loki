@@ -1,0 +1,236 @@
+name: Docs Link Check
+
+# The *internal* half of this problem is already gated on every PR by
+# .github/scripts/check-doc-links.sh in pr-ci.yml, which resolves relative
+# targets and heading anchors offline. This job is the other half: the outbound
+# links — GitHub, Shizuku, Koin, the GPL text, F-Droid, IzzyOnDroid — that rot
+# on somebody else's schedule.
+#
+# It runs weekly and files an issue rather than reddening a PR. A link check on
+# every push goes red whenever another host has a bad minute, and a check that
+# is red for reasons the contributor cannot fix is a check people learn to
+# ignore. Splitting it this way keeps the PR gate deterministic and the flaky
+# part advisory.
+#
+# It reads the Markdown in the repository, not a deployed site: Loki has no
+# website. lychee is given the FILES and extracts the links itself.
+#
+# The seed count is asserted below, because `git ls-files '*.md'` matching
+# nothing would otherwise be a green run of zero checks — forever, and green.
+# A gate that quietly stopped being a gate is the failure shape this repository
+# keeps writing comments about.
+#
+# One consequence worth knowing: `schedule` and the "Run workflow" button only
+# exist on the *default* branch, so this file does nothing until it reaches
+# master. That is fine — until then, pr-ci.yml is still checking the half that
+# can actually break in a PR.
+on:
+  schedule:
+    # Mondays 07:00 UTC. Nothing else in this repository is scheduled then;
+    # stale.yml runs on its own cron and files nothing.
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: docs-link-check
+  cancel-in-progress: false
+
+jobs:
+  link-check:
+    runs-on: ubuntu-latest
+    # lychee retries three times at up to 30s per request. A hung chain would
+    # otherwise sit on the 6-hour default.
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Allowed to fail so the verdict step below can still file an issue: a
+      # repository that somehow has no Markdown is itself worth reporting.
+      - name: Collect the Markdown to sweep
+        id: seed
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+
+          # Into a file rather than an output variable, because lychee-action
+          # `eval`s its args string and a path is untrusted input as far as that
+          # is concerned. --files-from keeps every path out of the shell.
+          #
+          # lychee treats a leading "#" in this file as a comment, so a path
+          # starting with one would be silently dropped. Nothing in the tree has
+          # one, and git would quote it if it did, but the count check below is
+          # what would actually catch it.
+          git ls-files -z '*.md' '*.markdown' | tr '\0' '\n' > docs.txt
+
+          count="$(grep -c . docs.txt || true)"
+          echo "Sweeping $count Markdown file(s)"
+          cat docs.txt
+
+          if [ "$count" -eq 0 ]; then
+            echo "::error::no Markdown files found - a run that checks nothing is not a pass"
+            exit 1
+          fi
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Check every outbound link in the docs
+        id: lychee
+        if: steps.seed.outcome == 'success'
+        # `failIfEmpty` (default true) exits non-zero when lychee finds no links
+        # at all, which is exactly the silent pass this job exists to prevent —
+        # so it is left on, and the step is allowed to fail so the issue still
+        # gets filed.
+        continue-on-error: true
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          # The verdict is decided below so an issue can be opened first;
+          # `fail: true` would abort the job before that.
+          fail: false
+          # Pinned so a lychee release cannot change what "broken" means
+          # between two Mondays without a diff.
+          lycheeVersion: v0.24.2
+          # --offline is deliberately NOT set: checking relative paths is
+          # pr-ci.yml's job and it does it better, with anchors. This run is
+          # only about the network.
+          #
+          # Low concurrency and a real retry gap because most of these links
+          # point at a handful of hosts; hammering them is how a link checker
+          # earns a 429 and reports it as a broken link. 403 and 429 are accepted
+          # for the same reason: both mean "reachable but not to a bot", which is
+          # not a broken link.
+          #
+          # lychee ends a clean run with a hint suggesting you replace redirecting
+          # URLs with their targets. Do not do that here without checking each
+          # one. Of the six this repository has, none should be resolved:
+          # /releases/latest redirects to the current tag and resolving it would
+          # freeze the badge and the download link to Loki_v1; the advisories link
+          # redirects to a login page because it is meant to; the rest are
+          # contributor-covenant adding a trailing slash.
+          args: >-
+            --no-progress
+            --verbose
+            --include-fragments
+            --exclude-path .github/ISSUE_TEMPLATE
+            --max-concurrency 4
+            --max-retries 3
+            --retry-wait-time 5
+            --timeout 30
+            --accept 200..=299,403,429
+            --user-agent "LokiDocsLinkCheck/1.0 (+https://github.com/trinadhthatakula/Loki)"
+            --files-from docs.txt
+
+      - name: Decide the verdict
+        id: verdict
+        # Through `env:` rather than inline `${{ }}` so nothing from a step
+        # output is ever parsed as shell.
+        env:
+          SEED_OUTCOME: ${{ steps.seed.outcome }}
+          LYCHEE_OUTCOME: ${{ steps.lychee.outcome }}
+          LYCHEE_EXIT: ${{ steps.lychee.outputs.exit_code }}
+        run: |
+          set -uo pipefail
+          seed="$SEED_OUTCOME"
+          lychee="$LYCHEE_OUTCOME"
+          code="$LYCHEE_EXIT"
+
+          # Three distinct failures that all mean the same thing to a reader:
+          # the docs' outbound links are not known to be good this week.
+          #   - the seed step failed        -> no Markdown, or git is unusable
+          #   - the lychee step failed      -> zero links found (failIfEmpty)
+          #   - a non-zero lychee exit code -> broken links
+          if [ "$seed" != "success" ] || [ "$lychee" = "failure" ] || { [ -n "$code" ] && [ "$code" != "0" ]; }; then
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "seed_failed=$([ "$seed" != "success" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      # The label has to exist before `gh issue create --label` will accept it,
+      # and a failure here would land at exactly the moment it matters most.
+      - name: Ensure the tracking label exists
+        if: steps.verdict.outputs.failed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh label create docs-link-check \
+            --description "Automated weekly external link sweep for the docs" \
+            --color D93F0B 2>/dev/null || true
+
+      - name: Open or update the tracking issue
+        if: steps.verdict.outputs.failed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SEED_FAILED: ${{ steps.verdict.outputs.seed_failed }}
+        run: |
+          {
+            echo "The weekly external link check failed."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo "Internal links are gated separately on every PR by"
+            echo "\`.github/scripts/check-doc-links.sh\`, so this is about outbound URLs only."
+            echo
+            if [ "$SEED_FAILED" = "true" ]; then
+              echo "**The sweep could not be seeded.** \`git ls-files '*.md'\` returned no files,"
+              echo "so nothing was checked."
+            elif [ ! -f lychee/out.md ]; then
+              # The action failed before writing a report at all — a failed
+              # binary download, say. Without this branch the redirect below
+              # would abort the step under `bash -e` and no issue would be filed.
+              echo "The link checker did not run to completion and produced no report."
+              echo "See the Actions run above."
+            else
+              # lychee's report is already Markdown, so it is inlined.
+              if [ "$(wc -c < lychee/out.md)" -gt 50000 ]; then
+                # head -c cuts at a byte offset, which can land mid-codepoint if
+                # a link title carries non-ASCII. iconv -c drops the partial
+                # sequence so the issue body stays valid UTF-8. `|| true` is
+                # load-bearing: iconv exits 1 on exactly that trailing sequence,
+                # and `run:` executes under `bash -e`.
+                head -c 50000 lychee/out.md | iconv -c -f utf-8 -t utf-8 2>/dev/null || true
+                echo
+                echo "_(truncated — see the full report in the Actions run above)_"
+              else
+                cat lychee/out.md
+              fi
+            fi
+          } > issue-body.md
+
+          existing="$(gh issue list --label docs-link-check --state open \
+                        --limit 1 --json number -q '.[0].number')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file issue-body.md
+          else
+            gh issue create \
+              --title "Docs external link check failed" \
+              --label docs-link-check \
+              --body-file issue-body.md
+          fi
+
+      - name: Close the tracking issue
+        if: steps.verdict.outputs.failed == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          existing="$(gh issue list --label docs-link-check --state open \
+                        --limit 1 --json number -q '.[0].number')"
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --comment "Link check passed. Run: $RUN_URL"
+          fi
+
+      # Every failure path above is `continue-on-error`, so without this the
+      # Actions history would show a green tick over a filed issue.
+      - name: Fail the run if the check failed
+        if: steps.verdict.outputs.failed == 'true'
+        run: exit 1

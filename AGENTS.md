@@ -85,6 +85,12 @@ shellcheck -x -S style .github/scripts/*.sh .github/scripts/test/*.sh
 actionlint          # pin 1.7.7 — a newer local build reports differently, see pr-ci.yml
 ```
 
+If you touched a Markdown file, or moved a source file the docs name:
+
+```bash
+.github/scripts/check-doc-links.sh
+```
+
 Notes:
 
 - `lintRelease`, not `lintDebug` — the release variant is the one that ships.

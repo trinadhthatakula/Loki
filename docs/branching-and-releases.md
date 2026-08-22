@@ -7,7 +7,7 @@ For *writing* the release notes themselves, see
 [`release-notes/README.md`](../release-notes/README.md) — this document covers the routing, that one
 covers the content.
 
-Loki's model is [Thor's](https://github.com/trinadhthatakula/Thor/blob/master/docs/branching-and-releases.md)
+Loki's model is [Thor's](https://github.com/trinadhthatakula/Thor/blob/dev/docs/branching-and-releases.md)
 with one rung removed. Thor has three branches because it has three Google Play tracks to feed;
 Loki has no Play listing yet, so it has two. The shared implementation is written so a third rung is
 an added caller, not a rewrite — see *[Adding a rung](#adding-a-rung)*.
