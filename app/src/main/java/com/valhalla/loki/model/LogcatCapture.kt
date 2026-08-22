@@ -110,10 +110,8 @@ class LogcatCapture(
                         CaptureMode.READ_LOGS
                     }
 
-                    permissionManager.isRootAvailable() -> {
-                        captureWithRoot(uid, outputFile)
-                        CaptureMode.ROOT
-                    }
+                    permissionManager.isRootAvailable() ->
+                        if (captureWithRoot(uid, outputFile)) CaptureMode.ROOT else CaptureMode.NONE
 
                     else -> {
                         Log.w(TAG, "no privilege available; nothing to capture")
@@ -276,10 +274,32 @@ class LogcatCapture(
      * filter is correct under both privileges, so both run the same command and there is one
      * behaviour to reason about rather than two. It also means AGENTS.md rule 1 stops depending on
      * `escapeForShell`, because there is no longer any caller-supplied text in the string at all.
+     *
+     * The probe below is this branch's half of AGENTS.md rule 3. [reportExit] covers the READ_LOGS
+     * path because a [Process] hands back an exit code; `asFlow()` does not. Odin closes that flow
+     * with a `NoShellException` only for `JOB_NOT_EXECUTED` — a dead shell — so a `logcat` that ran
+     * and *failed*, exit 1, completes the flow normally and empty. The capture then ends with a
+     * zero-length file and nothing anywhere saying why, which is indistinguishable from a quiet app.
+     *
+     * Returns whether a capture actually ran, so the caller does not record [CaptureMode.ROOT] for a
+     * privilege it never got to use. `mode` is the one line of a bug report that says which path was
+     * taken; claiming ROOT for a shell that refused the command sends the next reader after the
+     * wrong bug.
      */
-    private suspend fun captureWithRoot(uid: Int, outputFile: File) {
-        val shell = openRootShell() ?: return
-        if (!adopt(shell = shell)) return
+    private suspend fun captureWithRoot(uid: Int, outputFile: File): Boolean {
+        val shell = openRootShell() ?: return false
+        if (!adopt(shell = shell)) return false
+
+        // Same options as the stream, minus the follow: if `logcat` is going to reject the uid
+        // filter or the buffer under this privilege, it rejects a one-line dump too, and here the
+        // exit code is legible. `-t` implies `-d`, so this returns immediately instead of following.
+        // Runs on the capture's own shell before the stream starts, so nothing races it.
+        val probe = shell.newJob().add("logcat -d -t 1 --uid=$uid").exec()
+        if (!probe.isSuccess) {
+            val why = probe.stderr.joinToString(" ").trim()
+            Log.e(TAG, "root logcat probe exited ${probe.code}" + if (why.isEmpty()) "" else ": $why")
+            return false
+        }
 
         drainUntilClosed {
             outputFile.bufferedWriter().use { writer ->
@@ -291,6 +311,7 @@ class LogcatCapture(
                 }
             }
         }
+        return true
     }
 
     /**
