@@ -16,10 +16,15 @@
   live in `filesDir` (see `model/SavedLogs.kt`) — so it granted reach over other apps' files and
   the user's photos in exchange for nothing.
 
-  `<root-path name="root" path="."/>` is still here and should not be. It declares the entire
-  filesystem, in an app that runs a root shell. It predates the contribution and predates this
-  review, so it is raised in the PR rather than changed quietly — nothing in Loki needs it, and
-  deleting the line is the whole fix.
+  Also removed: `<root-path name="root" path="."/>`, which declared the entire filesystem in an app
+  that runs a root shell. It predated the contribution and this review, so it was first raised in the
+  PR rather than changed quietly; a second reviewer reached the same conclusion independently, and
+  the two `getUriForFile` call sites in the app — `logUri` in `ui/saved/SavedLogsScreen.kt` and
+  `share` in `ui/explorer/LogsExplorerScreen.kt` — resolve only under the two entries below, so
+  nothing needed it. Deleting the line was the whole fix.
+
+  Adding a path here widens what a URI can be minted for, so treat this file as part of the
+  privileged surface: the check is not "does the share work", it is "what else does this now reach".
 -->
 <paths>
     <files-path
@@ -28,5 +33,4 @@
     <cache-path
         name="log_shares"
         path="log_shares/" />
-    <root-path name="root" path="." />
 </paths>
