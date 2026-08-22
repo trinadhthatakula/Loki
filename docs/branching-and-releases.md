@@ -240,8 +240,8 @@ git push origin dev
 git rev-list --count origin/master ^dev   # expect 0
 ```
 
-This push goes directly to `dev`, which the `DevRules` ruleset permits through a repository-role
-bypass. It is the one and only exception to "never push directly to `dev`".
+This push goes directly to `dev`, which the `dev_branch_protector` ruleset permits through a
+repository-role bypass. It is the one and only exception to "never push directly to `dev`".
 
 ---
 
@@ -283,7 +283,7 @@ nobody notices from inside the repository.
 
 The two callers are thin on purpose. To add a third branch (say `production`, or a Play track):
 
-1. Add the branch and a ruleset for it (mirror `DevRules`).
+1. Add the branch and a ruleset for it (mirror `dev_branch_protector`).
 2. Copy `2-master-release.yml` to `3-<branch>-<verb>.yml`, change the `branches:` filter, the
    `concurrency.group`, and the inputs.
 3. If the new rung needs behaviour the current inputs cannot express, **add an input** to
