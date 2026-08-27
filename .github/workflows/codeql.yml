@@ -108,14 +108,14 @@ jobs:
       # The second one breaks this workflow — see the build step below, which disables
       # it explicitly rather than giving up the first one.
       - name: Set up JDK 21
-        uses: actions/setup-java@v5.7.0
+        uses: actions/setup-java@v6.0.0
         with:
           distribution: 'zulu'
           java-version: '21'
           cache: 'gradle'
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4.37.7
+        uses: github/codeql-action/init@v4.37.8
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
@@ -163,7 +163,7 @@ jobs:
           echo "':app:compileDebugKotlin' executed — the tracer saw a real compile."
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4.37.7
+        uses: github/codeql-action/analyze@v4.37.8
         with:
           # The category namespaces this run's results. Required the moment a second
           # analysis exists in the repo — without it, two uploads overwrite each
