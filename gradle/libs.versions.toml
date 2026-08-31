@@ -14,7 +14,7 @@ kotlinx-serialization-json = "1.11.0"
 # Odin exposes coroutines through `api()`, so this pin is what stops Loki from silently
 # tracking whatever version Odin happens to ship. Keep it deliberate.
 kotlinxCoroutines = "1.11.0"
-material3 = "1.5.0-alpha26"
+material3 = "1.5.0-alpha27"
 # Asgard UI. Note this is what sets Loki's `minSdk` floor at 28 — see the comment on `minSdk`
 # in app/build.gradle.kts before lowering either number.
 asgardUi = "2.0.0"
