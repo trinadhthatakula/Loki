@@ -7,17 +7,17 @@ junitVersion = "1.3.0"
 espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
-composeBom = "2026.08.00"
+composeBom = "2026.09.00"
 odin = "1.0.0"
 accompanistDrawablepainter = "0.37.3"
 kotlinx-serialization-json = "1.11.0"
 # Odin exposes coroutines through `api()`, so this pin is what stops Loki from silently
 # tracking whatever version Odin happens to ship. Keep it deliberate.
 kotlinxCoroutines = "1.11.0"
-material3 = "1.5.0-alpha27"
+material3 = "1.5.0-alpha28"
 # Asgard UI. Note this is what sets Loki's `minSdk` floor at 28 — see the comment on `minSdk`
 # in app/build.gradle.kts before lowering either number.
-asgardUi = "2.0.0"
+asgardUi = "2.0.1"
 splashscreen = "1.2.0"
 # Navigation 3 and DataStore both need explicit versions: the Compose BOM contains only
 # `androidx.compose*` groups, so it manages neither these nor the lifecycle artifacts.
