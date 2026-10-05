@@ -8,7 +8,7 @@ espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
 composeBom = "2026.09.00"
-odin = "1.0.0"
+odin = "1.1.0"
 accompanistDrawablepainter = "0.37.3"
 kotlinx-serialization-json = "1.11.0"
 # Odin exposes coroutines through `api()`, so this pin is what stops Loki from silently
