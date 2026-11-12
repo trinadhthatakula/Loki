@@ -17,7 +17,7 @@ kotlinxCoroutines = "1.11.0"
 material3 = "1.5.0-rc01"
 # Asgard UI. Note this is what sets Loki's `minSdk` floor at 28 — see the comment on `minSdk`
 # in app/build.gradle.kts before lowering either number.
-asgardUi = "2.0.1"
+asgardUi = "2.1.1"
 splashscreen = "1.2.0"
 # Navigation 3 and DataStore both need explicit versions: the Compose BOM contains only
 # `androidx.compose*` groups, so it manages neither these nor the lifecycle artifacts.
