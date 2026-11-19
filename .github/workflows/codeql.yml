@@ -108,7 +108,7 @@ jobs:
       # The second one breaks this workflow — see the build step below, which disables
       # it explicitly rather than giving up the first one.
       - name: Set up JDK 21
-        uses: actions/setup-java@v6.2.0
+        uses: actions/setup-java@v6.3.0
         with:
           distribution: 'zulu'
           java-version: '21'
